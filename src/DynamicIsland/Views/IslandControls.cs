@@ -15,6 +15,8 @@ public sealed class EqualizerBars : FrameworkElement
     private const double BarWidth = 3;
     private const double Gap = 2;
     private const double MinimumHeight = 3;
+    // Room above and below the tallest bar so device-pixel snapping never shaves off its rounded end.
+    private const double VerticalInset = 1.5;
     private readonly float[] _levels = new float[5];
 
     public Brush BarBrush
@@ -30,14 +32,15 @@ public sealed class EqualizerBars : FrameworkElement
     }
 
     protected override Size MeasureOverride(Size availableSize) =>
-        new(_levels.Length * BarWidth + (_levels.Length - 1) * Gap, 14);
+        new(_levels.Length * BarWidth + (_levels.Length - 1) * Gap, double.IsInfinity(availableSize.Height) ? 14 : availableSize.Height);
 
     protected override void OnRender(DrawingContext context)
     {
         var height = ActualHeight;
+        var range = Math.Max(MinimumHeight, height - 2 * VerticalInset);
         for (var index = 0; index < _levels.Length; index++)
         {
-            var bar = Math.Max(MinimumHeight, _levels[index] * height);
+            var bar = Math.Max(MinimumHeight, _levels[index] * range);
             var x = index * (BarWidth + Gap);
             context.DrawRoundedRectangle(BarBrush, null, new Rect(x, (height - bar) / 2, BarWidth, bar), BarWidth / 2, BarWidth / 2);
         }
