@@ -16,9 +16,10 @@ namespace DynamicIsland.Views;
 
 /// <summary>
 /// Host of the island HWND: a mostly transparent window pinned to the top centre of the primary monitor, with the island
-/// floating just below the edge like a Windows 11 flyout. It owns the size state (<see cref="IslandModeController"/>),
-/// shape interpolation, content slides, the artwork backdrop, banner timing and fullscreen hiding. Media, lyrics and
-/// notification state live in <see cref="IslandViewModel"/>.
+/// tucked into the screen edge at every size. It owns the size state (<see cref="IslandModeController"/>), shape
+/// interpolation, content slides, the large island's tabs and header, window previews, the artwork backdrop, banner
+/// timing and fullscreen hiding. Media, lyrics, notification, quick settings and window list state live in
+/// <see cref="IslandViewModel"/>.
 /// </summary>
 public partial class IslandWindow : Window
 {
