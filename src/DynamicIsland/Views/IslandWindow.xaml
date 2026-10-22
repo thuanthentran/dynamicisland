@@ -332,7 +332,24 @@
             <Setter Property="Margin" Value="0,0,0,4" />
         </Style>
 
-        <!-- Network, volume, battery and clock as the taskbar shows them; shared by every size. -->
+        <!-- Caps/Num Lock indicator: a small outlined keycap. -->
+        <Style x:Key="LockBadge" TargetType="Border">
+            <Setter Property="MinWidth" Value="16" />
+            <Setter Property="Height" Value="16" />
+            <Setter Property="Padding" Value="3,0" />
+            <Setter Property="CornerRadius" Value="3" />
+            <Setter Property="BorderThickness" Value="1" />
+            <Setter Property="BorderBrush" Value="{DynamicResource Island.Secondary}" />
+            <Setter Property="VerticalAlignment" Value="Center" />
+        </Style>
+        <Style x:Key="LockBadgeText" TargetType="TextBlock">
+            <Setter Property="FontSize" Value="10" />
+            <Setter Property="FontWeight" Value="SemiBold" />
+            <Setter Property="HorizontalAlignment" Value="Center" />
+            <Setter Property="VerticalAlignment" Value="Center" />
+        </Style>
+
+        <!-- Network, volume, battery, lock keys and clock as the taskbar shows them; shared by every size. -->
         <DataTemplate x:Key="StatusCluster" DataType="{x:Type vm:IslandViewModel}">
             <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
                 <Grid Opacity="{Binding NetworkOpacity}">
@@ -345,9 +362,90 @@
                     <TextBlock Style="{StaticResource Caption}" Foreground="{DynamicResource Island.Foreground}"
                                Text="{Binding BatteryText}" Margin="5,0,0,0" MinWidth="28" />
                 </StackPanel>
+                <StackPanel Orientation="Horizontal" Margin="{DynamicResource Island.StatusGap}"
+                            Visibility="{Binding HasLockBadge, Converter={StaticResource Visible}}">
+                    <Border Style="{StaticResource LockBadge}" Visibility="{Binding CapsBadge, Converter={StaticResource Visible}}">
+                        <TextBlock Style="{StaticResource LockBadgeText}" Text="C" />
+                    </Border>
+                    <Border Visibility="{Binding NumBadge, Converter={StaticResource Visible}}">
+                        <Border.Style>
+                            <Style TargetType="Border" BasedOn="{StaticResource LockBadge}">
+                                <Style.Triggers>
+                                    <DataTrigger Binding="{Binding CapsBadge}" Value="True">
+                                        <Setter Property="Margin" Value="4,0,0,0" />
+                                    </DataTrigger>
+                                </Style.Triggers>
+                            </Style>
+                        </Border.Style>
+                        <TextBlock Style="{StaticResource LockBadgeText}" Text="N" />
+                    </Border>
+                </StackPanel>
                 <TextBlock Style="{StaticResource Caption}" Foreground="{DynamicResource Island.Foreground}" FontWeight="SemiBold"
                            Text="{Binding ClockText}" Margin="{DynamicResource Island.ClockGap}" MinWidth="34" TextAlignment="Right" />
             </StackPanel>
+        </DataTemplate>
+
+        <!-- Small island status: on a Caps/Num Lock toggle the cluster steps aside to the left for a short toast. -->
+        <DataTemplate x:Key="SmallStatus" DataType="{x:Type vm:IslandViewModel}">
+            <Grid>
+                <ContentControl x:Name="Cluster" Focusable="False" Content="{Binding}" ContentTemplate="{StaticResource StatusCluster}">
+                    <ContentControl.RenderTransform>
+                        <TranslateTransform x:Name="ClusterShift" />
+                    </ContentControl.RenderTransform>
+                </ContentControl>
+                <StackPanel x:Name="Toast" Orientation="Horizontal" HorizontalAlignment="Center" VerticalAlignment="Center" Opacity="0">
+                    <StackPanel.RenderTransform>
+                        <TranslateTransform x:Name="ToastShift" X="24" />
+                    </StackPanel.RenderTransform>
+                    <TextBlock Style="{StaticResource StatusIcon}" Text="&#xE765;" />
+                    <TextBlock Style="{StaticResource Caption}" Foreground="{DynamicResource Island.Foreground}" FontWeight="SemiBold"
+                               Text="{Binding LockToastText}" Margin="8,0,0,0" />
+                </StackPanel>
+            </Grid>
+            <DataTemplate.Triggers>
+                <DataTrigger Binding="{Binding IsLockToastVisible}" Value="True">
+                    <DataTrigger.EnterActions>
+                        <BeginStoryboard>
+                            <Storyboard>
+                                <DoubleAnimation Storyboard.TargetName="ClusterShift" Storyboard.TargetProperty="X" To="-24" Duration="0:0:0.16">
+                                    <DoubleAnimation.EasingFunction>
+                                        <CubicEase EasingMode="EaseIn" />
+                                    </DoubleAnimation.EasingFunction>
+                                </DoubleAnimation>
+                                <DoubleAnimation Storyboard.TargetName="Cluster" Storyboard.TargetProperty="Opacity" To="0" Duration="0:0:0.16" />
+                                <DoubleAnimation Storyboard.TargetName="ToastShift" Storyboard.TargetProperty="X" From="24" To="0"
+                                                 BeginTime="0:0:0.06" Duration="0:0:0.3">
+                                    <DoubleAnimation.EasingFunction>
+                                        <QuinticEase EasingMode="EaseOut" />
+                                    </DoubleAnimation.EasingFunction>
+                                </DoubleAnimation>
+                                <DoubleAnimation Storyboard.TargetName="Toast" Storyboard.TargetProperty="Opacity" To="1"
+                                                 BeginTime="0:0:0.06" Duration="0:0:0.3" />
+                            </Storyboard>
+                        </BeginStoryboard>
+                    </DataTrigger.EnterActions>
+                    <DataTrigger.ExitActions>
+                        <BeginStoryboard>
+                            <Storyboard>
+                                <DoubleAnimation Storyboard.TargetName="ToastShift" Storyboard.TargetProperty="X" To="24" Duration="0:0:0.16">
+                                    <DoubleAnimation.EasingFunction>
+                                        <CubicEase EasingMode="EaseIn" />
+                                    </DoubleAnimation.EasingFunction>
+                                </DoubleAnimation>
+                                <DoubleAnimation Storyboard.TargetName="Toast" Storyboard.TargetProperty="Opacity" To="0" Duration="0:0:0.16" />
+                                <DoubleAnimation Storyboard.TargetName="ClusterShift" Storyboard.TargetProperty="X" From="-24" To="0"
+                                                 BeginTime="0:0:0.06" Duration="0:0:0.3">
+                                    <DoubleAnimation.EasingFunction>
+                                        <QuinticEase EasingMode="EaseOut" />
+                                    </DoubleAnimation.EasingFunction>
+                                </DoubleAnimation>
+                                <DoubleAnimation Storyboard.TargetName="Cluster" Storyboard.TargetProperty="Opacity" To="1"
+                                                 BeginTime="0:0:0.06" Duration="0:0:0.3" />
+                            </Storyboard>
+                        </BeginStoryboard>
+                    </DataTrigger.ExitActions>
+                </DataTrigger>
+            </DataTemplate.Triggers>
         </DataTemplate>
 
         <!-- App line of a media card, like Quick Settings: logo and name. -->
@@ -389,7 +487,7 @@
                     <sys:Double x:Key="Island.StatusIconSize">14</sys:Double>
                 </Grid.Resources>
                 <StackPanel Orientation="Horizontal" Margin="22,0" VerticalAlignment="Center">
-                    <ContentControl Focusable="False" Content="{Binding}" ContentTemplate="{StaticResource StatusCluster}" />
+                    <ContentControl Focusable="False" Content="{Binding}" ContentTemplate="{StaticResource SmallStatus}" />
                     <Button x:Name="StowIdleButton" Style="{StaticResource StowButton}" />
                 </StackPanel>
             </Grid>
@@ -426,7 +524,7 @@
                         </TextBlock.RenderTransform>
                     </TextBlock>
                     <Rectangle Width="1" Height="14" Margin="16,0" Fill="{DynamicResource Island.CardStroke}" />
-                    <ContentControl Focusable="False" Content="{Binding}" ContentTemplate="{StaticResource StatusCluster}" />
+                    <ContentControl Focusable="False" Content="{Binding}" ContentTemplate="{StaticResource SmallStatus}" />
                     <Button x:Name="StowMediaButton" Style="{StaticResource StowButton}" />
                 </StackPanel>
             </Grid>

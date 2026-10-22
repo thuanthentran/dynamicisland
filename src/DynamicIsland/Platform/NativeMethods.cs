@@ -24,6 +24,8 @@ internal static unsafe partial class NativeMethods
 
     public const int VK_LBUTTON = 0x01;
     public const int VK_RBUTTON = 0x02;
+    public const int VK_CAPITAL = 0x14;
+    public const int VK_NUMLOCK = 0x90;
 
     public const int QUNS_BUSY = 2;
     public const int QUNS_RUNNING_D3D_FULL_SCREEN = 3;
@@ -92,6 +94,9 @@ internal static unsafe partial class NativeMethods
 
     [LibraryImport("user32.dll")]
     public static partial short GetAsyncKeyState(int virtualKey);
+
+    [LibraryImport("user32.dll")]
+    public static partial short GetKeyState(int virtualKey);
 
     [LibraryImport("user32.dll")]
     public static partial IntPtr GetForegroundWindow();

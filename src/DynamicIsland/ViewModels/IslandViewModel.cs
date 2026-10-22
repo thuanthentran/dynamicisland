@@ -21,6 +21,7 @@ public sealed partial class IslandViewModel : ObservableObject, IDisposable
     private const int VisibleNotificationLimit = 3;
     private static readonly TimeSpan ProgressInterval = TimeSpan.FromMilliseconds(250);
     private static readonly TimeSpan LyricLead = TimeSpan.FromMilliseconds(250);
+    private static readonly TimeSpan LockToastDuration = TimeSpan.FromMilliseconds(1600);
 
     private readonly MediaService _media;
     private readonly NotificationService _notifications;
@@ -44,6 +45,9 @@ public sealed partial class IslandViewModel : ObservableObject, IDisposable
     private byte[]? _appIconBytes;
     private Color? _artworkColor;
     private bool _spectrumVisible;
+    private bool? _capsLock;
+    private bool? _numLock;
+    private DateTimeOffset? _lockToastUntil;
     private bool _disposed;
 
     [ObservableProperty] private string _title = NoMediaTitle;
@@ -89,6 +93,18 @@ public sealed partial class IslandViewModel : ObservableObject, IDisposable
     [ObservableProperty] private bool _hasBattery;
     [ObservableProperty] private string _batteryGlyph = "";
     [ObservableProperty] private string _batteryText = string.Empty;
+
+    // Lock keys: a toast on each toggle; once it is gone, a keycap letter beside the clock while the key stays on.
+    [ObservableProperty] private bool _isLockToastVisible;
+    [ObservableProperty] private string _lockToastText = string.Empty;
+
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(HasLockBadge))]
+    private bool _capsBadge;
+
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(HasLockBadge))]
+    private bool _numBadge;
 
     [ObservableProperty] private bool _hasNotifications;
     [ObservableProperty] private string _moreNotificationsText = string.Empty;
@@ -146,6 +162,7 @@ public sealed partial class IslandViewModel : ObservableObject, IDisposable
     public ObservableCollection<NotificationItemViewModel> VisibleNotifications { get; } = [];
     public bool HasBannerIcon => BannerIcon is not null;
     public bool HasSourceAppIcon => SourceAppIcon is not null;
+    public bool HasLockBadge => CapsBadge || NumBadge;
 
     // Segoe Fluent Icons, the solid set Quick Settings uses: PauseSolid / PlaySolid.
     public string PlayPauseGlyph => IsPlaying ? "" : "";
@@ -167,9 +184,10 @@ public sealed partial class IslandViewModel : ObservableObject, IDisposable
         };
     }
 
-    /// <summary>Advances the clock, playback position and lyric line. Called by the host timer on the UI thread.</summary>
+    /// <summary>Advances the clock, lock keys, playback position and lyric line. Called by the host timer on the UI thread.</summary>
     public void Tick(DateTimeOffset now)
     {
+        UpdateLockKeys(now);
         if (now.Minute != _lastClockMinute)
         {
             _lastClockMinute = now.Minute;
@@ -411,6 +429,29 @@ public sealed partial class IslandViewModel : ObservableObject, IDisposable
         PreviousLyric = index >= 1 ? lines[index - 1].Text : string.Empty;
         CurrentLyric = index >= 0 ? lines[index].Text : "♪";
         NextLyric = index + 1 < lines.Count ? lines[index + 1].Text : string.Empty;
+    }
+
+    /// <summary>
+    /// A toggle (not the state read at startup) shows a toast naming the key that changed; the badges follow the keys only
+    /// once the toast has gone, so the cluster comes back already showing the new state.
+    /// </summary>
+    private void UpdateLockKeys(DateTimeOffset now)
+    {
+        bool caps = LockKeys.CapsLock, num = LockKeys.NumLock;
+        if (_capsLock is { } wasCaps && _numLock is { } wasNum && (caps != wasCaps || num != wasNum))
+        {
+            LockToastText = caps != wasCaps ? $"Caps Lock {(caps ? "on" : "off")}" : $"Num Lock {(num ? "on" : "off")}";
+            IsLockToastVisible = true;
+            _lockToastUntil = now + LockToastDuration;
+        }
+        (_capsLock, _numLock) = (caps, num);
+
+        if (_lockToastUntil is { } until && now < until)
+            return;
+        _lockToastUntil = null;
+        IsLockToastVisible = false;
+        CapsBadge = caps;
+        NumBadge = num;
     }
 
     private void PresentBanner(IslandNotification notification)
