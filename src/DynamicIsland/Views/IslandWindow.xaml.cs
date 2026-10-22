@@ -31,6 +31,7 @@ public partial class IslandWindow : Window
     private const double BannerWidth = 420;
     private const double BannerHeight = 56;
     private const double SlideDistance = 24;
+    private const double LiftDistance = 12;
     private const double HoverPaddingDip = 6;
     private const double FullWindowHeight = 640;
     // Room below the shape for its shadow.
@@ -44,6 +45,8 @@ public partial class IslandWindow : Window
     private static readonly Duration ExitDuration = new(TimeSpan.FromMilliseconds(160));
     private static readonly Duration EnterDuration = new(TimeSpan.FromMilliseconds(300));
     private static readonly TimeSpan EnterDelay = TimeSpan.FromMilliseconds(60);
+    // Into the resize: the spring has covered most of the distance, so dropped-in content is not clipped for long.
+    private static readonly TimeSpan DropDelay = TimeSpan.FromMilliseconds(180);
     private static readonly Duration WindowFade = new(TimeSpan.FromMilliseconds(200));
 
     private readonly IslandViewModel _viewModel;
@@ -57,6 +60,7 @@ public partial class IslandWindow : Window
     private IntPtr _hwnd;
     private ScreenInfo _screen;
     private FrameworkElement? _currentPanel;
+    private IslandMode _shownMode = IslandMode.Small;
     private DateTime? _bannerUntil;
     private double _mediumHeight = 72;
     private double _lastSmallWidth = 200;
@@ -271,11 +275,20 @@ public partial class IslandWindow : Window
 
     private void Refresh(int direction, bool animate)
     {
+        // Into or out of the small island (or nothing at all) is a vertical move in three beats: the old content lifts
+        // away, then the shape resizes, then the new content drops in. Medium ↔ large and swaps within one size stay
+        // horizontal and resize at once.
+        var mode = _modes.Mode;
+        var vertical = animate && mode != _shownMode && !(IsExpanded(mode) && IsExpanded(_shownMode));
+        _shownMode = mode;
+
         var next = ResolvePanel();
         PreparePanel(next);
+        // With nothing on screen to lift away (stowed), the shape starts at once.
+        var resizeDelay = vertical && _currentPanel is { } shown && shown != StowedPanel ? ExitDuration.TimeSpan : TimeSpan.Zero;
         if (next != _currentPanel)
-            SwapContent(next, direction, animate);
-        ApplyLayout(animate);
+            SwapContent(next, direction, animate, vertical, resizeDelay);
+        ApplyLayout(animate, resizeDelay);
 
         var equalizerOn = IsEqualizerPanel(next) && _modes.Mode != IslandMode.Hidden;
         _viewModel.SetSpectrumVisible(equalizerOn);
@@ -326,7 +339,9 @@ public partial class IslandWindow : Window
         return new Size(panel == MediumPanel ? MediumWidth : LargeWidth, height);
     }
 
-    private void ApplyLayout(bool animate)
+    private static bool IsExpanded(IslandMode mode) => mode is IslandMode.Medium or IslandMode.Large;
+
+    private void ApplyLayout(bool animate, TimeSpan delay = default)
     {
         if (_currentPanel is null)
             return;
@@ -350,10 +365,25 @@ public partial class IslandWindow : Window
         }
         // From the current animated value: an interrupted resize continues smoothly toward the new target.
         Island.BeginAnimation(IslandSurface.ShapeWidthProperty,
-            new DoubleAnimation(target.Width, ResizeDuration) { EasingFunction = _spring }, HandoffBehavior.SnapshotAndReplace);
-        var height = new DoubleAnimation(target.Height, ResizeDuration) { EasingFunction = _spring };
+            ResizeAnimation(Island.ShapeWidth, target.Width, delay), HandoffBehavior.SnapshotAndReplace);
+        var height = ResizeAnimation(Island.ShapeHeight, target.Height, delay);
         height.Completed += (_, _) => CompactWindow(target);
         Island.BeginAnimation(IslandSurface.ShapeHeightProperty, height, HandoffBehavior.SnapshotAndReplace);
+    }
+
+    /// <summary>
+    /// The spring toward <paramref name="to"/>; with a delay the shape first holds its current size (key frames, so the
+    /// held value never falls back to the property's base value).
+    /// </summary>
+    private AnimationTimeline ResizeAnimation(double from, double to, TimeSpan delay)
+    {
+        if (delay <= TimeSpan.Zero)
+            return new DoubleAnimation(to, ResizeDuration) { EasingFunction = _spring };
+        var frames = new DoubleAnimationUsingKeyFrames();
+        frames.KeyFrames.Add(new DiscreteDoubleKeyFrame(from, KeyTime.FromTimeSpan(TimeSpan.Zero)));
+        frames.KeyFrames.Add(new DiscreteDoubleKeyFrame(from, KeyTime.FromTimeSpan(delay)));
+        frames.KeyFrames.Add(new EasingDoubleKeyFrame(to, KeyTime.FromTimeSpan(delay + ResizeDuration.TimeSpan), _spring));
+        return frames;
     }
 
     /// <summary>
@@ -368,10 +398,12 @@ public partial class IslandWindow : Window
     }
 
     /// <summary>
-    /// Old content slides out and fades toward the leading side, new content slides in from the trailing side.
-    /// <paramref name="direction"/> 1 moves content leftward (forward), -1 rightward (back).
+    /// Horizontal: old content slides out and fades toward the leading side, new content slides in from the trailing
+    /// side; <paramref name="direction"/> 1 moves content leftward (forward), -1 rightward (back). Vertical: old content
+    /// lifts up into the edge, and the new content drops down from it once the shape has started resizing after
+    /// <paramref name="resizeDelay"/>.
     /// </summary>
-    private void SwapContent(FrameworkElement next, int direction, bool animate)
+    private void SwapContent(FrameworkElement next, int direction, bool animate, bool vertical, TimeSpan resizeDelay)
     {
         var previous = _currentPanel;
         _currentPanel = next;
@@ -379,15 +411,21 @@ public partial class IslandWindow : Window
         next.Visibility = Visibility.Visible;
         next.BeginAnimation(OpacityProperty, null);
         nextShift.BeginAnimation(TranslateTransform.XProperty, null);
+        nextShift.BeginAnimation(TranslateTransform.YProperty, null);
+        nextShift.X = nextShift.Y = 0;
 
         if (!animate || previous is null)
         {
             next.Opacity = 1;
-            nextShift.X = 0;
             if (previous is not null)
                 previous.Visibility = Visibility.Collapsed;
             return;
         }
+
+        var axis = vertical ? TranslateTransform.YProperty : TranslateTransform.XProperty;
+        var exitOffset = vertical ? -LiftDistance : -SlideDistance * direction;
+        var enterOffset = vertical ? -LiftDistance : SlideDistance * direction;
+        var enterDelay = vertical ? resizeDelay + DropDelay : EnterDelay;
 
         var previousShift = (TranslateTransform)previous.RenderTransform;
         var fadeOut = new DoubleAnimation(0, ExitDuration);
@@ -396,16 +434,16 @@ public partial class IslandWindow : Window
             if (previous != _currentPanel)
                 previous.Visibility = Visibility.Collapsed;
         };
-        previousShift.BeginAnimation(TranslateTransform.XProperty,
-            new DoubleAnimation(-SlideDistance * direction, ExitDuration) { EasingFunction = new CubicEase { EasingMode = EasingMode.EaseIn } });
+        previousShift.BeginAnimation(axis,
+            new DoubleAnimation(exitOffset, ExitDuration) { EasingFunction = new CubicEase { EasingMode = EasingMode.EaseIn } });
         previous.BeginAnimation(OpacityProperty, fadeOut);
 
         // Base values cover the enter delay, so the new content never flashes at full opacity.
         next.Opacity = 0;
-        nextShift.X = SlideDistance * direction;
-        nextShift.BeginAnimation(TranslateTransform.XProperty,
-            new DoubleAnimation(0, EnterDuration) { BeginTime = EnterDelay, EasingFunction = new QuinticEase { EasingMode = EasingMode.EaseOut } });
-        next.BeginAnimation(OpacityProperty, new DoubleAnimation(1, EnterDuration) { BeginTime = EnterDelay });
+        nextShift.SetValue(axis, enterOffset);
+        nextShift.BeginAnimation(axis,
+            new DoubleAnimation(0, EnterDuration) { BeginTime = enterDelay, EasingFunction = new QuinticEase { EasingMode = EasingMode.EaseOut } });
+        next.BeginAnimation(OpacityProperty, new DoubleAnimation(1, EnterDuration) { BeginTime = enterDelay });
     }
 
     private void OnPanelSizeChanged(object sender, SizeChangedEventArgs e)
