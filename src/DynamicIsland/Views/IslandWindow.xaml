@@ -283,6 +283,31 @@
             </Grid>
         </DataTemplate>
 
+        <!-- Window card in the Windows tab: a card that lights up on hover; clicking it switches to the window. -->
+        <Style x:Key="WindowCard" TargetType="Button">
+            <Setter Property="Foreground" Value="{DynamicResource Island.Foreground}" />
+            <Setter Property="Focusable" Value="False" />
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="Button">
+                        <Border x:Name="Chrome" CornerRadius="6" BorderThickness="1" Padding="8"
+                                Background="{DynamicResource Island.Card}" BorderBrush="{DynamicResource Island.CardStroke}">
+                            <ContentPresenter />
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="Chrome" Property="Background" Value="{DynamicResource Island.Hover}" />
+                                <Setter TargetName="Chrome" Property="BorderBrush" Value="{DynamicResource Island.ControlStrong}" />
+                            </Trigger>
+                            <Trigger Property="IsPressed" Value="True">
+                                <Setter TargetName="Chrome" Property="Background" Value="{DynamicResource Island.Pressed}" />
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
         <!-- Body of a large island tab: starts below the shared 48px header. -->
         <Style x:Key="LargeTab" TargetType="StackPanel">
             <Setter Property="Width" Value="840" />
@@ -695,6 +720,8 @@
                                  IsChecked="{Binding SelectedTab, Converter={StaticResource Equals}, ConverterParameter=Home}" />
                     <RadioButton Style="{StaticResource TabItem}" GroupName="Tab" Content="Quick settings"
                                  IsChecked="{Binding SelectedTab, Converter={StaticResource Equals}, ConverterParameter=QuickSettings}" />
+                    <RadioButton Style="{StaticResource TabItem}" GroupName="Tab" Content="Windows"
+                                 IsChecked="{Binding SelectedTab, Converter={StaticResource Equals}, ConverterParameter=Windows}" />
                     <RadioButton Style="{StaticResource TabItem}" GroupName="Tab" Content="Settings"
                                  IsChecked="{Binding SelectedTab, Converter={StaticResource Equals}, ConverterParameter=Settings}" />
                 </StackPanel>
@@ -936,6 +963,60 @@
                             </Grid>
                         </StackPanel>
                     </Border>
+                </StackPanel>
+            </StackPanel>
+
+            <!--
+              Windows tab: open windows like Task View, most recently used first. Each card's Slot gets a live preview drawn
+              by DWM once the island is still; until then (and for windows DWM cannot preview) it shows the app icon.
+            -->
+            <StackPanel x:Name="WindowsTab" Style="{StaticResource LargeTab}" DataContext="{Binding Windows}">
+                <StackPanel Margin="16,4,16,16">
+                    <Border Style="{StaticResource Card}" Padding="16,14" Margin="4"
+                            Visibility="{Binding HasWindows, Converter={StaticResource Hidden}}">
+                        <TextBlock Style="{StaticResource CaptionTertiary}" Text="No open windows" HorizontalAlignment="Center" />
+                    </Border>
+                    <ItemsControl x:Name="WindowsList" ItemsSource="{Binding Items}" Focusable="False">
+                        <ItemsControl.ItemsPanel>
+                            <ItemsPanelTemplate>
+                                <UniformGrid Columns="4" VerticalAlignment="Top" />
+                            </ItemsPanelTemplate>
+                        </ItemsControl.ItemsPanel>
+                        <ItemsControl.ItemTemplate>
+                            <DataTemplate DataType="{x:Type vm:WindowItemViewModel}">
+                                <Button Style="{StaticResource WindowCard}" Margin="4" Command="{Binding ActivateCommand}">
+                                    <StackPanel>
+                                        <Grid Height="24">
+                                            <Grid.ColumnDefinitions>
+                                                <ColumnDefinition Width="Auto" />
+                                                <ColumnDefinition Width="*" />
+                                                <ColumnDefinition Width="Auto" />
+                                            </Grid.ColumnDefinitions>
+                                            <Grid Width="16" Height="16" Margin="2,0,0,0">
+                                                <TextBlock Style="{StaticResource Icon}" Text="&#xE737;" FontSize="14"
+                                                           Visibility="{Binding HasIcon, Converter={StaticResource Hidden}}" />
+                                                <Image Source="{Binding Icon}" Visibility="{Binding HasIcon, Converter={StaticResource Visible}}" />
+                                            </Grid>
+                                            <TextBlock Grid.Column="1" Style="{StaticResource Caption}" Foreground="{DynamicResource Island.Foreground}"
+                                                       Text="{Binding Title}" Margin="8,0,4,0" />
+                                            <Button Grid.Column="2" Style="{StaticResource SmallSubtleButton}" Content="&#xE711;" FontSize="10"
+                                                    Width="24" Height="24" Command="{Binding CloseCommand}" />
+                                        </Grid>
+                                        <Border x:Name="Slot" Height="104" Margin="0,6,0,0" CornerRadius="4" Background="{DynamicResource Island.ControlFill}">
+                                            <Grid Width="32" Height="32">
+                                                <TextBlock Style="{StaticResource Icon}" Text="&#xE737;" FontSize="28" HorizontalAlignment="Center"
+                                                           Foreground="{DynamicResource Island.Tertiary}"
+                                                           Visibility="{Binding HasIcon, Converter={StaticResource Hidden}}" />
+                                                <Image Source="{Binding Icon}" Visibility="{Binding HasIcon, Converter={StaticResource Visible}}" />
+                                            </Grid>
+                                        </Border>
+                                    </StackPanel>
+                                </Button>
+                            </DataTemplate>
+                        </ItemsControl.ItemTemplate>
+                    </ItemsControl>
+                    <TextBlock Style="{StaticResource CaptionTertiary}" Text="{Binding MoreText}" Margin="6,4,0,0"
+                               Visibility="{Binding HasMore, Converter={StaticResource Visible}}" />
                 </StackPanel>
             </StackPanel>
 

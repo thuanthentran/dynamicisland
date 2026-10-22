@@ -1,6 +1,7 @@
 using System.ComponentModel;
 using System.Runtime.InteropServices;
 using System.Windows;
+using System.Windows.Controls;
 using System.Windows.Input;
 using System.Windows.Interop;
 using System.Windows.Media;
@@ -41,6 +42,10 @@ public partial class IslandWindow : Window
     private static readonly TimeSpan TopmostInterval = TimeSpan.FromSeconds(5);
     private static readonly TimeSpan TrimAfterIdle = TimeSpan.FromSeconds(10);
     private static readonly TimeSpan TrimMinimumInterval = TimeSpan.FromSeconds(60);
+    private static readonly TimeSpan WindowsRefreshInterval = TimeSpan.FromMilliseconds(1500);
+    // Longer than a resize plus a content slide: previews appear only on a shape at rest.
+    private static readonly TimeSpan ThumbnailSettleDelay = TimeSpan.FromMilliseconds(700);
+    private const double ThumbnailInsetDip = 4;
     private static readonly Duration ResizeDuration = new(TimeSpan.FromMilliseconds(520));
     private static readonly Duration ExitDuration = new(TimeSpan.FromMilliseconds(160));
     private static readonly Duration EnterDuration = new(TimeSpan.FromMilliseconds(300));
@@ -66,6 +71,9 @@ public partial class IslandWindow : Window
     private IslandTab _shownTab;
     private bool _headerShown;
     private int _wheelDelta;
+    private readonly Dictionary<IntPtr, DwmThumbnail> _thumbnails = [];
+    private readonly DispatcherTimer _thumbnailTimer;
+    private DateTime _lastWindowsRefresh;
     private DateTime? _bannerUntil;
     private double _mediumHeight = 72;
     private double _lastSmallWidth = 200;
@@ -86,8 +94,10 @@ public partial class IslandWindow : Window
         _timer.Tick += OnTick;
         _spectrumTimer = new DispatcherTimer(DispatcherPriority.Render) { Interval = SpectrumInterval };
         _spectrumTimer.Tick += OnSpectrumTick;
+        _thumbnailTimer = new DispatcherTimer(DispatcherPriority.Background) { Interval = ThumbnailSettleDelay };
+        _thumbnailTimer.Tick += (_, _) => ShowThumbnails();
 
-        _tabs = [HomeTab, QuickSettingsTab, SettingsTab];
+        _tabs = [HomeTab, QuickSettingsTab, WindowsTab, SettingsTab];
         _panels = [StowedPanel, SmallIdlePanel, SmallMediaPanel, BannerPanel, MediumPanel, .. _tabs];
         foreach (var panel in _panels)
         {
@@ -116,6 +126,8 @@ public partial class IslandWindow : Window
         _viewModel.BannerRequested += OnBannerRequested;
         _viewModel.SettingsChanged += ApplySettings;
         _viewModel.CollapseRequested += OnCollapseRequested;
+        _viewModel.Windows.ExcludedWindow = _hwnd;
+        _viewModel.Windows.LayoutChanged += ScheduleThumbnails;
         ApplySettings(_viewModel.CurrentSettings);
 
         Place();
@@ -137,6 +149,9 @@ public partial class IslandWindow : Window
         _viewModel.BannerRequested -= OnBannerRequested;
         _viewModel.SettingsChanged -= ApplySettings;
         _viewModel.CollapseRequested -= OnCollapseRequested;
+        _viewModel.Windows.LayoutChanged -= ScheduleThumbnails;
+        _thumbnailTimer.Stop();
+        ReleaseThumbnails();
     }
 
     private void ApplySettings(IslandSettings settings)
@@ -208,6 +223,12 @@ public partial class IslandWindow : Window
         {
             _bannerUntil = null;
             Refresh(direction: 1, animate: true);
+        }
+
+        if (_currentPanel == WindowsTab && _modes.Mode == IslandMode.Large && now - _lastWindowsRefresh >= WindowsRefreshInterval)
+        {
+            _lastWindowsRefresh = now;
+            _viewModel.Windows.Refresh(snapshot: false);
         }
 
         if (_modes.Mode != IslandMode.Hidden && now - _lastTopmost >= TopmostInterval)
@@ -333,6 +354,7 @@ public partial class IslandWindow : Window
         _viewModel.SetSpectrumVisible(equalizerOn);
         if (equalizerOn)
             _spectrumTimer.Start();
+        ScheduleThumbnails();
     }
 
     private void PreparePanel(FrameworkElement panel)
@@ -526,8 +548,75 @@ public partial class IslandWindow : Window
 
     private void OnPanelSizeChanged(object sender, SizeChangedEventArgs e)
     {
-        if (sender == _currentPanel)
-            ApplyLayout(animate: true);
+        if (sender != _currentPanel)
+            return;
+        ApplyLayout(animate: true);
+        if (sender == WindowsTab)
+            ScheduleThumbnails();
+    }
+
+    // ---- Window previews -------------------------------------------------------------------------------------------
+
+    /// <summary>
+    /// DWM draws previews above the island as plain rectangles, unclipped by its shape, so any change hides them and they
+    /// come back only after <see cref="ThumbnailSettleDelay"/> with nothing moving. Leaving the tab releases them.
+    /// </summary>
+    private void ScheduleThumbnails()
+    {
+        _thumbnailTimer.Stop();
+        if (_currentPanel != WindowsTab || _modes.Mode != IslandMode.Large)
+        {
+            ReleaseThumbnails();
+            return;
+        }
+        foreach (var thumbnail in _thumbnails.Values)
+            thumbnail.Hide();
+        _thumbnailTimer.Start();
+    }
+
+    private void ShowThumbnails()
+    {
+        _thumbnailTimer.Stop();
+        if (_currentPanel != WindowsTab || _modes.Mode != IslandMode.Large || PresentationSource.FromVisual(this) is not { } source)
+            return;
+        var toDevice = source.CompositionTarget.TransformToDevice;
+        var shown = new HashSet<IntPtr>();
+        foreach (var item in _viewModel.Windows.Items)
+        {
+            if (WindowsList.ItemContainerGenerator.ContainerFromItem(item) is not ContentPresenter presenter ||
+                presenter.ContentTemplate?.FindName("Slot", presenter) is not FrameworkElement slot || !slot.IsVisible)
+                continue;
+            var bounds = slot.TransformToAncestor(this).TransformBounds(new Rect(slot.RenderSize));
+            bounds.Inflate(-ThumbnailInsetDip, -ThumbnailInsetDip);
+            bounds.Transform(toDevice);
+
+            if (!_thumbnails.TryGetValue(item.Handle, out var thumbnail))
+            {
+                if (DwmThumbnail.TryCreate(_hwnd, item.Handle) is not { } created)
+                    continue;
+                _thumbnails[item.Handle] = thumbnail = created;
+            }
+            var rect = new RECT
+            {
+                Left = (int)Math.Round(bounds.Left), Top = (int)Math.Round(bounds.Top),
+                Right = (int)Math.Round(bounds.Right), Bottom = (int)Math.Round(bounds.Bottom)
+            };
+            if (thumbnail.Show(rect))
+                shown.Add(item.Handle);
+        }
+
+        foreach (var stale in _thumbnails.Keys.Where(handle => !shown.Contains(handle)).ToList())
+        {
+            _thumbnails[stale].Dispose();
+            _thumbnails.Remove(stale);
+        }
+    }
+
+    private void ReleaseThumbnails()
+    {
+        foreach (var thumbnail in _thumbnails.Values)
+            thumbnail.Dispose();
+        _thumbnails.Clear();
     }
 
     private void OnBannerRequested(TimeSpan duration)
@@ -548,6 +637,11 @@ public partial class IslandWindow : Window
             case nameof(IslandViewModel.SelectedTab) when _modes.Mode == IslandMode.Large && _viewModel.SelectedTab != _shownTab:
                 if (_viewModel.SelectedTab == IslandTab.QuickSettings)
                     _ = _viewModel.QuickSettings.ActivateAsync();
+                if (_viewModel.SelectedTab == IslandTab.Windows)
+                {
+                    _lastWindowsRefresh = DateTime.UtcNow;
+                    _viewModel.Windows.Refresh(snapshot: true);
+                }
                 Refresh(direction: _viewModel.SelectedTab > _shownTab ? 1 : -1, animate: true);
                 break;
             case nameof(IslandViewModel.Palette):

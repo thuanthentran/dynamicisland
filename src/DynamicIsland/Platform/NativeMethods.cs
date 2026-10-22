@@ -33,6 +33,41 @@ internal static unsafe partial class NativeMethods
 
     public const int APPMODEL_ERROR_NO_PACKAGE = 15700;
 
+    public const nint WS_EX_APPWINDOW = 0x00040000;
+    public const uint GW_OWNER = 4;
+    public const int SW_RESTORE = 9;
+    public const int WM_CLOSE = 0x0010;
+    public const int WM_GETICON = 0x007F;
+    public const int ICON_SMALL = 0;
+    public const int ICON_BIG = 1;
+    public const int ICON_SMALL2 = 2;
+    public const int GCLP_HICON = -14;
+    public const uint SMTO_ABORTIFHUNG = 0x0002;
+    public const int DWMWA_CLOAKED = 14;
+
+    public const uint DWM_TNP_RECTDESTINATION = 0x01;
+    public const uint DWM_TNP_OPACITY = 0x04;
+    public const uint DWM_TNP_VISIBLE = 0x08;
+    public const uint DWM_TNP_SOURCECLIENTAREAONLY = 0x10;
+
+    [StructLayout(LayoutKind.Sequential)]
+    public struct SIZE
+    {
+        public int Width;
+        public int Height;
+    }
+
+    [StructLayout(LayoutKind.Sequential)]
+    public struct DWM_THUMBNAIL_PROPERTIES
+    {
+        public uint dwFlags;
+        public RECT rcDestination;
+        public RECT rcSource;
+        public byte opacity;
+        public int fVisible;
+        public int fSourceClientAreaOnly;
+    }
+
     [StructLayout(LayoutKind.Sequential)]
     public struct POINT
     {
@@ -120,4 +155,58 @@ internal static unsafe partial class NativeMethods
     [LibraryImport("kernel32.dll", EntryPoint = "K32EmptyWorkingSet")]
     [return: MarshalAs(UnmanagedType.Bool)]
     public static partial bool EmptyWorkingSet(IntPtr process);
+
+    [LibraryImport("user32.dll")]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    public static partial bool EnumWindows(delegate* unmanaged<IntPtr, IntPtr, int> callback, IntPtr lParam);
+
+    [LibraryImport("user32.dll")]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    public static partial bool IsWindowVisible(IntPtr hwnd);
+
+    [LibraryImport("user32.dll")]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    public static partial bool IsIconic(IntPtr hwnd);
+
+    [LibraryImport("user32.dll")]
+    public static partial IntPtr GetWindow(IntPtr hwnd, uint command);
+
+    [LibraryImport("user32.dll", EntryPoint = "GetWindowTextLengthW")]
+    public static partial int GetWindowTextLength(IntPtr hwnd);
+
+    [LibraryImport("user32.dll", EntryPoint = "GetWindowTextW")]
+    public static partial int GetWindowText(IntPtr hwnd, char* text, int maxCount);
+
+    [LibraryImport("user32.dll")]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    public static partial bool ShowWindow(IntPtr hwnd, int command);
+
+    [LibraryImport("user32.dll")]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    public static partial bool SetForegroundWindow(IntPtr hwnd);
+
+    [LibraryImport("user32.dll", EntryPoint = "PostMessageW")]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    public static partial bool PostMessage(IntPtr hwnd, int message, IntPtr wParam, IntPtr lParam);
+
+    [LibraryImport("user32.dll", EntryPoint = "SendMessageTimeoutW")]
+    public static partial IntPtr SendMessageTimeout(IntPtr hwnd, int message, IntPtr wParam, IntPtr lParam, uint flags, uint timeout, out IntPtr result);
+
+    [LibraryImport("user32.dll", EntryPoint = "GetClassLongPtrW")]
+    public static partial IntPtr GetClassLongPtr(IntPtr hwnd, int index);
+
+    [LibraryImport("dwmapi.dll")]
+    public static partial int DwmGetWindowAttribute(IntPtr hwnd, int attribute, out int value, int size);
+
+    [LibraryImport("dwmapi.dll")]
+    public static partial int DwmRegisterThumbnail(IntPtr destination, IntPtr source, out IntPtr thumbnail);
+
+    [LibraryImport("dwmapi.dll")]
+    public static partial int DwmUnregisterThumbnail(IntPtr thumbnail);
+
+    [LibraryImport("dwmapi.dll")]
+    public static partial int DwmUpdateThumbnailProperties(IntPtr thumbnail, in DWM_THUMBNAIL_PROPERTIES properties);
+
+    [LibraryImport("dwmapi.dll")]
+    public static partial int DwmQueryThumbnailSourceSize(IntPtr thumbnail, out SIZE size);
 }

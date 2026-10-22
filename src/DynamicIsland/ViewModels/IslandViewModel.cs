@@ -14,6 +14,7 @@ public enum IslandTab
 {
     Home,
     QuickSettings,
+    Windows,
     Settings
 }
 
@@ -152,6 +153,7 @@ public sealed partial class IslandViewModel : ObservableObject, IDisposable
         _exit = exit;
         Settings = new SettingsViewModel(settings);
         QuickSettings = new QuickSettingsViewModel(quickSettings, status, _ui, () => CollapseRequested?.Invoke());
+        Windows = new WindowsViewModel(() => CollapseRequested?.Invoke());
 
         _media.SnapshotChanged += OnSnapshotChanged;
         _notifications.NotificationArrived += OnNotificationArrived;
@@ -173,6 +175,7 @@ public sealed partial class IslandViewModel : ObservableObject, IDisposable
 
     public SettingsViewModel Settings { get; }
     public QuickSettingsViewModel QuickSettings { get; }
+    public WindowsViewModel Windows { get; }
     public IslandSettings CurrentSettings => _settings.Current;
     public ObservableCollection<NotificationItemViewModel> VisibleNotifications { get; } = [];
     public bool HasBannerIcon => BannerIcon is not null;
