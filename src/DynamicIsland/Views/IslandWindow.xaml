@@ -196,6 +196,45 @@
             </Setter>
         </Style>
 
+        <!-- Large island tabs: text items like the Windows 11 SelectorBar, an accent pill under the selected one. -->
+        <Style x:Key="TabItem" TargetType="RadioButton">
+            <Setter Property="Foreground" Value="{DynamicResource Island.Secondary}" />
+            <Setter Property="FontSize" Value="13" />
+            <Setter Property="Focusable" Value="False" />
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="RadioButton">
+                        <Border x:Name="Chrome" CornerRadius="4" Padding="12,0" Height="28" Background="Transparent">
+                            <Grid>
+                                <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center" Margin="0,0,0,3" />
+                                <Border x:Name="Pill" Width="16" Height="3" CornerRadius="1.5" VerticalAlignment="Bottom" Margin="0,0,0,1"
+                                        Background="{DynamicResource Island.Accent}" Opacity="0" />
+                            </Grid>
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="Chrome" Property="Background" Value="{DynamicResource Island.Hover}" />
+                                <Setter Property="Foreground" Value="{DynamicResource Island.Foreground}" />
+                            </Trigger>
+                            <Trigger Property="IsChecked" Value="True">
+                                <Setter TargetName="Pill" Property="Opacity" Value="1" />
+                                <Setter Property="Foreground" Value="{DynamicResource Island.Foreground}" />
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
+        <!-- Body of a large island tab: starts below the shared 48px header. -->
+        <Style x:Key="LargeTab" TargetType="StackPanel">
+            <Setter Property="Width" Value="840" />
+            <Setter Property="HorizontalAlignment" Value="Center" />
+            <Setter Property="VerticalAlignment" Value="Top" />
+            <Setter Property="Margin" Value="0,48,0,0" />
+            <Setter Property="Visibility" Value="Collapsed" />
+        </Style>
+
         <!-- Segmented choice: radio buttons in a 4px track; the selected one fills with accent. -->
         <Style x:Key="Segment" TargetType="RadioButton">
             <Setter Property="Foreground" Value="{DynamicResource Island.Foreground}" />
@@ -586,19 +625,28 @@
                 </Grid>
             </StackPanel>
 
-            <!-- Large: media and lyrics on the left, notifications on the right -->
-            <StackPanel x:Name="LargePanel" Width="840" HorizontalAlignment="Center" VerticalAlignment="Top" Visibility="Collapsed">
-                <StackPanel Margin="20,0,20,20">
-                    <Grid Height="44">
-                        <Button Style="{StaticResource SmallSubtleButton}" Content="&#xE713;" Command="{Binding OpenSettingsCommand}"
-                                HorizontalAlignment="Left" />
-                        <Button x:Name="QuickCloseButton" Style="{StaticResource HandleButton}" HorizontalAlignment="Center"
-                                VerticalAlignment="Top" />
-                        <ContentControl HorizontalAlignment="Right" Margin="0,0,4,0" Focusable="False"
-                                        Content="{Binding}" ContentTemplate="{StaticResource StatusCluster}" />
-                    </Grid>
+            <!--
+              Large header, shared by the tabs and kept still while they swap: the quick-close handle on the top edge, the tab
+              bar under it and status on the right. Scrolling anywhere on this strip (where the pointer already is after
+              opening) steps through the tabs.
+            -->
+            <Grid x:Name="LargeHeader" Width="840" Height="48" HorizontalAlignment="Center"
+                  VerticalAlignment="Top" Visibility="Collapsed" Background="Transparent">
+                <Button x:Name="QuickCloseButton" Style="{StaticResource HandleButton}" HorizontalAlignment="Center" VerticalAlignment="Top" />
+                <StackPanel Orientation="Horizontal" HorizontalAlignment="Center" VerticalAlignment="Bottom" Margin="0,0,0,2">
+                    <RadioButton Style="{StaticResource TabItem}" GroupName="Tab" Content="Home"
+                                 IsChecked="{Binding SelectedTab, Converter={StaticResource Equals}, ConverterParameter=Home}" />
+                    <RadioButton Style="{StaticResource TabItem}" GroupName="Tab" Content="Settings"
+                                 IsChecked="{Binding SelectedTab, Converter={StaticResource Equals}, ConverterParameter=Settings}" />
+                </StackPanel>
+                <ContentControl HorizontalAlignment="Right" VerticalAlignment="Bottom" Height="28" Margin="0,0,24,2" Focusable="False"
+                                Content="{Binding}" ContentTemplate="{StaticResource StatusCluster}" />
+            </Grid>
 
-                    <Grid Margin="0,8,0,0">
+            <!-- Home tab: media and lyrics on the left, notifications on the right -->
+            <StackPanel x:Name="HomeTab" Style="{StaticResource LargeTab}">
+                <StackPanel Margin="20,8,20,20">
+                    <Grid>
                         <Grid.ColumnDefinitions>
                             <ColumnDefinition Width="480" />
                             <ColumnDefinition Width="16" />
@@ -736,14 +784,9 @@
                 </StackPanel>
             </StackPanel>
 
-            <!-- Settings, entered from the large island; cards like the Windows Settings app -->
-            <StackPanel x:Name="SettingsPanel" Width="840" HorizontalAlignment="Center" VerticalAlignment="Top" Visibility="Collapsed">
-                <StackPanel Margin="20,6,20,20" DataContext="{Binding Settings}">
-                    <Grid Height="36" Margin="0,0,0,8">
-                        <Button Style="{StaticResource SmallSubtleButton}" Content="&#xE72B;" HorizontalAlignment="Left"
-                                Command="{Binding DataContext.CloseSettingsCommand, RelativeSource={RelativeSource AncestorType=Window}}" />
-                        <TextBlock Style="{StaticResource BodyStrong}" Text="Settings" Margin="44,0,0,0" />
-                    </Grid>
+            <!-- Settings tab: cards like the Windows Settings app -->
+            <StackPanel x:Name="SettingsTab" Style="{StaticResource LargeTab}">
+                <StackPanel Margin="20,8,20,20" DataContext="{Binding Settings}">
 
                     <Border Style="{StaticResource SettingCard}">
                         <Grid>

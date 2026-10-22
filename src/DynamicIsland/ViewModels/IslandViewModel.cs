@@ -9,6 +9,13 @@ using DynamicIsland.Services.Lyrics;
 
 namespace DynamicIsland.ViewModels;
 
+/// <summary>Tabs of the large island, in the order the tab bar shows them and the scroll wheel steps through.</summary>
+public enum IslandTab
+{
+    Home,
+    Settings
+}
+
 /// <summary>
 /// Bindable island state. Service events are marshalled onto the UI thread through the SynchronizationContext captured at
 /// construction; the host owns size, mode and motion and calls <see cref="Tick"/> from its timer.
@@ -116,7 +123,8 @@ public sealed partial class IslandViewModel : ObservableObject, IDisposable
     [ObservableProperty] private string _bannerBody = string.Empty;
     [ObservableProperty] private ImageSource? _bannerIcon;
 
-    [ObservableProperty] private bool _isSettingsOpen;
+    /// <summary>The large island's tab; the host returns it to <see cref="IslandTab.Home"/> whenever the island leaves large.</summary>
+    [ObservableProperty] private IslandTab _selectedTab;
     [ObservableProperty] private IslandPalette _palette = IslandPalette.Dark(Colors.DodgerBlue);
 
     /// <summary>Equalizer colour: the artwork's dominant colour tuned for the theme, or the system accent without artwork.</summary>
@@ -258,12 +266,6 @@ public sealed partial class IslandViewModel : ObservableObject, IDisposable
 
     [RelayCommand]
     private Task ClearNotificationsAsync() => _notifications.ClearAsync();
-
-    [RelayCommand]
-    private void OpenSettings() => IsSettingsOpen = true;
-
-    [RelayCommand]
-    private void CloseSettings() => IsSettingsOpen = false;
 
     [RelayCommand]
     private void Exit() => _exit();

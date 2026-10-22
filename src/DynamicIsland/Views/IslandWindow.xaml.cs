@@ -57,10 +57,15 @@ public partial class IslandWindow : Window
     private readonly float[] _bands = new float[AudioSpectrumService.BandCount];
     private readonly float[] _smoothedBands = new float[AudioSpectrumService.BandCount];
     private readonly FrameworkElement[] _panels;
+    // Indexed by IslandTab.
+    private readonly FrameworkElement[] _tabs;
     private IntPtr _hwnd;
     private ScreenInfo _screen;
     private FrameworkElement? _currentPanel;
     private IslandMode _shownMode = IslandMode.Small;
+    private IslandTab _shownTab;
+    private bool _headerShown;
+    private int _wheelDelta;
     private DateTime? _bannerUntil;
     private double _mediumHeight = 72;
     private double _lastSmallWidth = 200;
@@ -82,14 +87,17 @@ public partial class IslandWindow : Window
         _spectrumTimer = new DispatcherTimer(DispatcherPriority.Render) { Interval = SpectrumInterval };
         _spectrumTimer.Tick += OnSpectrumTick;
 
-        _panels = [StowedPanel, SmallIdlePanel, SmallMediaPanel, BannerPanel, MediumPanel, LargePanel, SettingsPanel];
+        _tabs = [HomeTab, SettingsTab];
+        _panels = [StowedPanel, SmallIdlePanel, SmallMediaPanel, BannerPanel, MediumPanel, .. _tabs];
         foreach (var panel in _panels)
         {
             panel.RenderTransform = new TranslateTransform();
             panel.SizeChanged += OnPanelSizeChanged;
         }
+        LargeHeader.RenderTransform = new TranslateTransform();
 
         Island.MouseLeftButtonUp += OnIslandClicked;
+        Island.PreviewMouseWheel += OnIslandWheel;
         QuickCloseButton.Click += (_, _) => ApplyModeChange(_modes.QuickClose());
         StowIdleButton.Click += (_, _) => ApplyModeChange(_modes.Stow());
         StowMediaButton.Click += (_, _) => ApplyModeChange(_modes.Stow());
@@ -240,6 +248,27 @@ public partial class IslandWindow : Window
 
     private void OnIslandClicked(object sender, MouseButtonEventArgs e) => ApplyModeChange(_modes.Open());
 
+    /// <summary>
+    /// Scrolling on the large island's header strip steps through the tabs: down for the next, up for the previous,
+    /// stopping at either end. Precision touchpads send small deltas, so they add up to one notch first.
+    /// </summary>
+    private void OnIslandWheel(object sender, MouseWheelEventArgs e)
+    {
+        if (_modes.Mode != IslandMode.Large || !_headerShown)
+            return;
+        var y = e.GetPosition(LargeHeader).Y;
+        if (y < 0 || y > LargeHeader.ActualHeight)
+            return;
+        e.Handled = true;
+
+        _wheelDelta += e.Delta;
+        if (Math.Abs(_wheelDelta) < Mouse.MouseWheelDeltaForOneLine)
+            return;
+        var step = _wheelDelta < 0 ? 1 : -1;
+        _wheelDelta = 0;
+        _viewModel.SelectedTab = (IslandTab)Math.Clamp((int)_viewModel.SelectedTab + step, 0, _tabs.Length - 1);
+    }
+
     // ---- Modes and content -----------------------------------------------------------------------------------------
 
     private void ApplyModeChange(IslandMode? change)
@@ -249,7 +278,7 @@ public partial class IslandWindow : Window
 
         SetWindowShown(mode != IslandMode.Hidden);
         if (mode != IslandMode.Large)
-            _viewModel.IsSettingsOpen = false;
+            _viewModel.SelectedTab = IslandTab.Home; // every opening starts on Home
         if (mode is IslandMode.Large or IslandMode.Hidden)
             _bannerUntil = null; // the large island lists notifications itself
         if (mode is IslandMode.Stowed)
@@ -267,7 +296,7 @@ public partial class IslandWindow : Window
 
     private FrameworkElement ResolvePanel() => _modes.Mode switch
     {
-        IslandMode.Large => _viewModel.IsSettingsOpen ? SettingsPanel : LargePanel,
+        IslandMode.Large => _tabs[(int)_viewModel.SelectedTab],
         IslandMode.Medium => _bannerUntil.HasValue ? BannerPanel : MediumPanel,
         IslandMode.Stowed => StowedPanel,
         _ => _bannerUntil.HasValue ? BannerPanel : _viewModel.HasMedia ? SmallMediaPanel : SmallIdlePanel
@@ -281,13 +310,18 @@ public partial class IslandWindow : Window
         var mode = _modes.Mode;
         var vertical = animate && mode != _shownMode && !(IsExpanded(mode) && IsExpanded(_shownMode));
         _shownMode = mode;
+        _shownTab = _viewModel.SelectedTab;
 
         var next = ResolvePanel();
         PreparePanel(next);
         // With nothing on screen to lift away (stowed), the shape starts at once.
         var resizeDelay = vertical && _currentPanel is { } shown && shown != StowedPanel ? ExitDuration.TimeSpan : TimeSpan.Zero;
+        var motion = vertical
+            ? new Motion(TranslateTransform.YProperty, -LiftDistance, -LiftDistance, resizeDelay + DropDelay)
+            : new Motion(TranslateTransform.XProperty, -SlideDistance * direction, SlideDistance * direction, EnterDelay);
         if (next != _currentPanel)
-            SwapContent(next, direction, animate, vertical, resizeDelay);
+            SwapContent(next, animate, motion);
+        UpdateHeader(animate, motion);
         ApplyLayout(animate, resizeDelay);
 
         var equalizerOn = IsEqualizerPanel(next) && _modes.Mode != IslandMode.Hidden;
@@ -398,52 +432,91 @@ public partial class IslandWindow : Window
     }
 
     /// <summary>
-    /// Horizontal: old content slides out and fades toward the leading side, new content slides in from the trailing
-    /// side; <paramref name="direction"/> 1 moves content leftward (forward), -1 rightward (back). Vertical: old content
-    /// lifts up into the edge, and the new content drops down from it once the shape has started resizing after
-    /// <paramref name="resizeDelay"/>.
+    /// How content leaves and arrives. Horizontal: out toward the leading side, in from the trailing side (direction 1
+    /// moves content leftward, -1 rightward). Vertical: out by lifting into the edge, in by dropping down from it once the
+    /// shape has started resizing.
     /// </summary>
-    private void SwapContent(FrameworkElement next, int direction, bool animate, bool vertical, TimeSpan resizeDelay)
+    private readonly record struct Motion(DependencyProperty Axis, double ExitOffset, double EnterOffset, TimeSpan EnterDelay);
+
+    private void SwapContent(FrameworkElement next, bool animate, Motion motion)
     {
         var previous = _currentPanel;
         _currentPanel = next;
-        var nextShift = (TranslateTransform)next.RenderTransform;
-        next.Visibility = Visibility.Visible;
-        next.BeginAnimation(OpacityProperty, null);
-        nextShift.BeginAnimation(TranslateTransform.XProperty, null);
-        nextShift.BeginAnimation(TranslateTransform.YProperty, null);
-        nextShift.X = nextShift.Y = 0;
-
         if (!animate || previous is null)
         {
-            next.Opacity = 1;
+            Settle(next);
             if (previous is not null)
                 previous.Visibility = Visibility.Collapsed;
             return;
         }
+        SlideOut(previous, motion, () => previous != _currentPanel);
+        SlideIn(next, motion);
+    }
 
-        var axis = vertical ? TranslateTransform.YProperty : TranslateTransform.XProperty;
-        var exitOffset = vertical ? -LiftDistance : -SlideDistance * direction;
-        var enterOffset = vertical ? -LiftDistance : SlideDistance * direction;
-        var enterDelay = vertical ? resizeDelay + DropDelay : EnterDelay;
+    /// <summary>The large island's header comes and goes with the large size, and stays put while its tabs swap.</summary>
+    private void UpdateHeader(bool animate, Motion motion)
+    {
+        var show = _modes.Mode == IslandMode.Large;
+        if (show == _headerShown)
+            return;
+        _headerShown = show;
+        if (!animate)
+        {
+            if (show)
+                Settle(LargeHeader);
+            else
+                LargeHeader.Visibility = Visibility.Collapsed;
+        }
+        else if (show)
+        {
+            SlideIn(LargeHeader, motion);
+        }
+        else
+        {
+            SlideOut(LargeHeader, motion, () => !_headerShown);
+        }
+    }
 
-        var previousShift = (TranslateTransform)previous.RenderTransform;
+    private static void Settle(FrameworkElement element)
+    {
+        var shift = ResetMotion(element);
+        shift.X = shift.Y = 0;
+        element.Opacity = 1;
+    }
+
+    private void SlideIn(FrameworkElement element, Motion motion)
+    {
+        var shift = ResetMotion(element);
+        shift.X = shift.Y = 0;
+        // Base values cover the enter delay, so the new content never flashes at full opacity.
+        element.Opacity = 0;
+        shift.SetValue(motion.Axis, motion.EnterOffset);
+        shift.BeginAnimation(motion.Axis,
+            new DoubleAnimation(0, EnterDuration) { BeginTime = motion.EnterDelay, EasingFunction = new QuinticEase { EasingMode = EasingMode.EaseOut } });
+        element.BeginAnimation(OpacityProperty, new DoubleAnimation(1, EnterDuration) { BeginTime = motion.EnterDelay });
+    }
+
+    private static void SlideOut(FrameworkElement element, Motion motion, Func<bool> collapseWhenDone)
+    {
         var fadeOut = new DoubleAnimation(0, ExitDuration);
         fadeOut.Completed += (_, _) =>
         {
-            if (previous != _currentPanel)
-                previous.Visibility = Visibility.Collapsed;
+            if (collapseWhenDone())
+                element.Visibility = Visibility.Collapsed;
         };
-        previousShift.BeginAnimation(axis,
-            new DoubleAnimation(exitOffset, ExitDuration) { EasingFunction = new CubicEase { EasingMode = EasingMode.EaseIn } });
-        previous.BeginAnimation(OpacityProperty, fadeOut);
+        ((TranslateTransform)element.RenderTransform).BeginAnimation(motion.Axis,
+            new DoubleAnimation(motion.ExitOffset, ExitDuration) { EasingFunction = new CubicEase { EasingMode = EasingMode.EaseIn } });
+        element.BeginAnimation(OpacityProperty, fadeOut);
+    }
 
-        // Base values cover the enter delay, so the new content never flashes at full opacity.
-        next.Opacity = 0;
-        nextShift.SetValue(axis, enterOffset);
-        nextShift.BeginAnimation(axis,
-            new DoubleAnimation(0, EnterDuration) { BeginTime = enterDelay, EasingFunction = new QuinticEase { EasingMode = EasingMode.EaseOut } });
-        next.BeginAnimation(OpacityProperty, new DoubleAnimation(1, EnterDuration) { BeginTime = enterDelay });
+    private static TranslateTransform ResetMotion(FrameworkElement element)
+    {
+        var shift = (TranslateTransform)element.RenderTransform;
+        element.Visibility = Visibility.Visible;
+        element.BeginAnimation(OpacityProperty, null);
+        shift.BeginAnimation(TranslateTransform.XProperty, null);
+        shift.BeginAnimation(TranslateTransform.YProperty, null);
+        return shift;
     }
 
     private void OnPanelSizeChanged(object sender, SizeChangedEventArgs e)
@@ -467,8 +540,8 @@ public partial class IslandWindow : Window
             case nameof(IslandViewModel.HasMedia):
                 Refresh(direction: 1, animate: true);
                 break;
-            case nameof(IslandViewModel.IsSettingsOpen) when _modes.Mode == IslandMode.Large:
-                Refresh(direction: _viewModel.IsSettingsOpen ? 1 : -1, animate: true);
+            case nameof(IslandViewModel.SelectedTab) when _modes.Mode == IslandMode.Large && _viewModel.SelectedTab != _shownTab:
+                Refresh(direction: _viewModel.SelectedTab > _shownTab ? 1 : -1, animate: true);
                 break;
             case nameof(IslandViewModel.Palette):
                 ApplyPalette(_viewModel.Palette);
@@ -534,7 +607,7 @@ public partial class IslandWindow : Window
     /// <summary>New lyric line: the visible lyric text slides up a step and settles, like a scrolling lyric sheet.</summary>
     private void AnimateLyricShift()
     {
-        if (_currentPanel == LargePanel)
+        if (_currentPanel == HomeTab)
             SlideUp(LyricsStack, LyricsShift, 10);
         else if (_currentPanel == SmallMediaPanel)
             SlideUp(SmallLyric, SmallLyricShift, 6);
