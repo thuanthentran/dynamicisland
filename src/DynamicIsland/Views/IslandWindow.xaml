@@ -226,6 +226,63 @@
             </Setter>
         </Style>
 
+        <!-- Quick settings tile: outlined when off, accent when on (Tile.IsOn), like the Windows 11 Quick Settings buttons. -->
+        <Style x:Key="TileButton" TargetType="Button">
+            <Setter Property="Foreground" Value="{DynamicResource Island.Foreground}" />
+            <Setter Property="FontFamily" Value="{StaticResource IconFont}" />
+            <Setter Property="FontSize" Value="16" />
+            <Setter Property="Height" Value="48" />
+            <Setter Property="HorizontalContentAlignment" Value="Center" />
+            <Setter Property="VerticalContentAlignment" Value="Center" />
+            <Setter Property="Focusable" Value="False" />
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="Button">
+                        <Border x:Name="Chrome" CornerRadius="{TemplateBinding views:Tile.CornerRadius}" BorderThickness="1"
+                                Background="{DynamicResource Island.ControlFill}" BorderBrush="{DynamicResource Island.CardStroke}">
+                            <ContentPresenter x:Name="Glyph" HorizontalAlignment="{TemplateBinding HorizontalContentAlignment}"
+                                              VerticalAlignment="{TemplateBinding VerticalContentAlignment}" />
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="Chrome" Property="Background" Value="{DynamicResource Island.Hover}" />
+                            </Trigger>
+                            <Trigger Property="views:Tile.IsOn" Value="True">
+                                <Setter TargetName="Chrome" Property="Background" Value="{DynamicResource Island.Accent}" />
+                                <Setter TargetName="Chrome" Property="BorderBrush" Value="{DynamicResource Island.Accent}" />
+                                <Setter Property="Foreground" Value="{DynamicResource Island.OnAccent}" />
+                            </Trigger>
+                            <MultiTrigger>
+                                <MultiTrigger.Conditions>
+                                    <Condition Property="views:Tile.IsOn" Value="True" />
+                                    <Condition Property="IsMouseOver" Value="True" />
+                                </MultiTrigger.Conditions>
+                                <Setter TargetName="Chrome" Property="Opacity" Value="0.9" />
+                            </MultiTrigger>
+                            <Trigger Property="IsPressed" Value="True">
+                                <Setter TargetName="Glyph" Property="Opacity" Value="0.75" />
+                            </Trigger>
+                            <Trigger Property="IsEnabled" Value="False">
+                                <Setter Property="Opacity" Value="0.36" />
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+        <Style x:Key="TileLabel" TargetType="TextBlock" BasedOn="{StaticResource Caption}">
+            <Setter Property="Foreground" Value="{DynamicResource Island.Foreground}" />
+            <Setter Property="HorizontalAlignment" Value="Center" />
+            <Setter Property="Margin" Value="0,6,0,0" />
+        </Style>
+        <!-- Tiles that only open a Settings page carry a small "opens elsewhere" mark. -->
+        <DataTemplate x:Key="LinkGlyph" DataType="{x:Type sys:String}">
+            <Grid>
+                <TextBlock Text="{Binding}" HorizontalAlignment="Center" VerticalAlignment="Center" />
+                <TextBlock Text="&#xE8A7;" FontSize="10" HorizontalAlignment="Right" VerticalAlignment="Top" Margin="0,6,6,0" Opacity="0.6" />
+            </Grid>
+        </DataTemplate>
+
         <!-- Body of a large island tab: starts below the shared 48px header. -->
         <Style x:Key="LargeTab" TargetType="StackPanel">
             <Setter Property="Width" Value="840" />
@@ -636,6 +693,8 @@
                 <StackPanel Orientation="Horizontal" HorizontalAlignment="Center" VerticalAlignment="Bottom" Margin="0,0,0,2">
                     <RadioButton Style="{StaticResource TabItem}" GroupName="Tab" Content="Home"
                                  IsChecked="{Binding SelectedTab, Converter={StaticResource Equals}, ConverterParameter=Home}" />
+                    <RadioButton Style="{StaticResource TabItem}" GroupName="Tab" Content="Quick settings"
+                                 IsChecked="{Binding SelectedTab, Converter={StaticResource Equals}, ConverterParameter=QuickSettings}" />
                     <RadioButton Style="{StaticResource TabItem}" GroupName="Tab" Content="Settings"
                                  IsChecked="{Binding SelectedTab, Converter={StaticResource Equals}, ConverterParameter=Settings}" />
                 </StackPanel>
@@ -781,6 +840,102 @@
                                        Visibility="{Binding HasMoreNotifications, Converter={StaticResource Visible}}" />
                         </StackPanel>
                     </Grid>
+                </StackPanel>
+            </StackPanel>
+
+            <!--
+              Quick settings tab: what Windows Quick Settings offers through documented APIs (Wi-Fi, Bluetooth, brightness,
+              volume, Energy saver state); the rest open their page in Settings (marked with the "opens elsewhere" glyph).
+            -->
+            <StackPanel x:Name="QuickSettingsTab" Style="{StaticResource LargeTab}" DataContext="{Binding QuickSettings}">
+                <StackPanel Margin="20,8,20,20">
+                    <Border Style="{StaticResource Card}" Padding="12,16">
+                        <UniformGrid Columns="6">
+                            <StackPanel Margin="4,0">
+                                <Grid>
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="*" />
+                                        <ColumnDefinition Width="36" />
+                                    </Grid.ColumnDefinitions>
+                                    <Button Style="{StaticResource TileButton}" Content="&#xE701;" views:Tile.CornerRadius="4,0,0,4"
+                                            views:Tile.IsOn="{Binding WifiOn}" IsEnabled="{Binding CanToggleWifi}" Command="{Binding ToggleWifiCommand}" />
+                                    <Button Grid.Column="1" Style="{StaticResource TileButton}" Content="&#xE76C;" FontSize="12" Margin="1,0,0,0"
+                                            views:Tile.CornerRadius="0,4,4,0" views:Tile.IsOn="{Binding WifiOn}"
+                                            Command="{Binding OpenSettingsCommand}" CommandParameter="ms-settings:network-wifi" />
+                                </Grid>
+                                <TextBlock Style="{StaticResource TileLabel}" Text="Wi-Fi" />
+                            </StackPanel>
+                            <StackPanel Margin="4,0">
+                                <Grid>
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="*" />
+                                        <ColumnDefinition Width="36" />
+                                    </Grid.ColumnDefinitions>
+                                    <Button Style="{StaticResource TileButton}" Content="&#xE702;" views:Tile.CornerRadius="4,0,0,4"
+                                            views:Tile.IsOn="{Binding BluetoothOn}" IsEnabled="{Binding CanToggleBluetooth}"
+                                            Command="{Binding ToggleBluetoothCommand}" />
+                                    <Button Grid.Column="1" Style="{StaticResource TileButton}" Content="&#xE76C;" FontSize="12" Margin="1,0,0,0"
+                                            views:Tile.CornerRadius="0,4,4,0" views:Tile.IsOn="{Binding BluetoothOn}"
+                                            Command="{Binding OpenSettingsCommand}" CommandParameter="ms-settings:bluetooth" />
+                                </Grid>
+                                <TextBlock Style="{StaticResource TileLabel}" Text="Bluetooth" />
+                            </StackPanel>
+                            <StackPanel Margin="4,0">
+                                <Button Style="{StaticResource TileButton}" Content="&#xE709;" ContentTemplate="{StaticResource LinkGlyph}" HorizontalContentAlignment="Stretch" VerticalContentAlignment="Stretch"
+                                        Command="{Binding OpenSettingsCommand}" CommandParameter="ms-settings:network-airplanemode" />
+                                <TextBlock Style="{StaticResource TileLabel}" Text="Airplane mode" />
+                            </StackPanel>
+                            <StackPanel Margin="4,0" IsEnabled="{Binding HasEnergySaver}">
+                                <Button Style="{StaticResource TileButton}" Content="&#xE8BE;" ContentTemplate="{StaticResource LinkGlyph}" HorizontalContentAlignment="Stretch" VerticalContentAlignment="Stretch"
+                                        views:Tile.IsOn="{Binding EnergySaverOn}"
+                                        Command="{Binding OpenSettingsCommand}" CommandParameter="ms-settings:batterysaver" />
+                                <TextBlock Style="{StaticResource TileLabel}" Text="Energy saver" />
+                            </StackPanel>
+                            <StackPanel Margin="4,0">
+                                <Button Style="{StaticResource TileButton}" Content="&#xF08C;" ContentTemplate="{StaticResource LinkGlyph}" HorizontalContentAlignment="Stretch" VerticalContentAlignment="Stretch"
+                                        Command="{Binding OpenSettingsCommand}" CommandParameter="ms-settings:nightlight" />
+                                <TextBlock Style="{StaticResource TileLabel}" Text="Night light" />
+                            </StackPanel>
+                            <StackPanel Margin="4,0">
+                                <Button Style="{StaticResource TileButton}" Content="&#xE708;" ContentTemplate="{StaticResource LinkGlyph}" HorizontalContentAlignment="Stretch" VerticalContentAlignment="Stretch"
+                                        Command="{Binding OpenSettingsCommand}" CommandParameter="ms-settings:quiethours" />
+                                <TextBlock Style="{StaticResource TileLabel}" Text="Focus" />
+                            </StackPanel>
+                        </UniformGrid>
+                    </Border>
+
+                    <Border Style="{StaticResource Card}" Margin="0,8,0,0" Padding="8,8,8,8">
+                        <StackPanel>
+                            <Grid Height="40" Visibility="{Binding HasBrightness, Converter={StaticResource Visible}}">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="40" />
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="40" />
+                                </Grid.ColumnDefinitions>
+                                <TextBlock Style="{StaticResource Icon}" Text="&#xE706;" HorizontalAlignment="Center" />
+                                <views:SeekBar Grid.Column="1" Margin="8,0" Value="{Binding Brightness}" IsContinuous="True"
+                                               Command="{Binding SetBrightnessCommand}"
+                                               TrackBrush="{DynamicResource Island.Track}" FillBrush="{DynamicResource Island.Accent}"
+                                               ThumbBrush="{DynamicResource Island.Thumb}" />
+                                <Button Grid.Column="2" Style="{StaticResource SmallSubtleButton}" Content="&#xE76C;" FontSize="12"
+                                        Command="{Binding OpenSettingsCommand}" CommandParameter="ms-settings:display" />
+                            </Grid>
+                            <Grid Height="40">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="40" />
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="40" />
+                                </Grid.ColumnDefinitions>
+                                <Button Style="{StaticResource SmallSubtleButton}" Content="{Binding VolumeGlyph}" Command="{Binding ToggleMuteCommand}" />
+                                <views:SeekBar Grid.Column="1" Margin="8,0" Value="{Binding Volume}" IsContinuous="True"
+                                               Command="{Binding SetVolumeCommand}"
+                                               TrackBrush="{DynamicResource Island.Track}" FillBrush="{DynamicResource Island.Accent}"
+                                               ThumbBrush="{DynamicResource Island.Thumb}" />
+                                <Button Grid.Column="2" Style="{StaticResource SmallSubtleButton}" Content="&#xE76C;" FontSize="12"
+                                        Command="{Binding OpenSettingsCommand}" CommandParameter="ms-settings:sound" />
+                            </Grid>
+                        </StackPanel>
+                    </Border>
                 </StackPanel>
             </StackPanel>
 

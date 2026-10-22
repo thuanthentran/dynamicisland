@@ -87,7 +87,7 @@ public partial class IslandWindow : Window
         _spectrumTimer = new DispatcherTimer(DispatcherPriority.Render) { Interval = SpectrumInterval };
         _spectrumTimer.Tick += OnSpectrumTick;
 
-        _tabs = [HomeTab, SettingsTab];
+        _tabs = [HomeTab, QuickSettingsTab, SettingsTab];
         _panels = [StowedPanel, SmallIdlePanel, SmallMediaPanel, BannerPanel, MediumPanel, .. _tabs];
         foreach (var panel in _panels)
         {
@@ -115,6 +115,7 @@ public partial class IslandWindow : Window
         _viewModel.PropertyChanged += OnViewModelPropertyChanged;
         _viewModel.BannerRequested += OnBannerRequested;
         _viewModel.SettingsChanged += ApplySettings;
+        _viewModel.CollapseRequested += OnCollapseRequested;
         ApplySettings(_viewModel.CurrentSettings);
 
         Place();
@@ -135,6 +136,7 @@ public partial class IslandWindow : Window
         _viewModel.PropertyChanged -= OnViewModelPropertyChanged;
         _viewModel.BannerRequested -= OnBannerRequested;
         _viewModel.SettingsChanged -= ApplySettings;
+        _viewModel.CollapseRequested -= OnCollapseRequested;
     }
 
     private void ApplySettings(IslandSettings settings)
@@ -247,6 +249,9 @@ public partial class IslandWindow : Window
     }
 
     private void OnIslandClicked(object sender, MouseButtonEventArgs e) => ApplyModeChange(_modes.Open());
+
+    /// <summary>Another window takes over (a Settings page, a switched-to app): close like the handle does.</summary>
+    private void OnCollapseRequested() => ApplyModeChange(_modes.QuickClose());
 
     /// <summary>
     /// Scrolling on the large island's header strip steps through the tabs: down for the next, up for the previous,
@@ -541,6 +546,8 @@ public partial class IslandWindow : Window
                 Refresh(direction: 1, animate: true);
                 break;
             case nameof(IslandViewModel.SelectedTab) when _modes.Mode == IslandMode.Large && _viewModel.SelectedTab != _shownTab:
+                if (_viewModel.SelectedTab == IslandTab.QuickSettings)
+                    _ = _viewModel.QuickSettings.ActivateAsync();
                 Refresh(direction: _viewModel.SelectedTab > _shownTab ? 1 : -1, animate: true);
                 break;
             case nameof(IslandViewModel.Palette):

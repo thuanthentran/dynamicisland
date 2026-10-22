@@ -73,6 +73,10 @@ public sealed class SeekBar : FrameworkElement
     public static readonly DependencyProperty CommandProperty = DependencyProperty.Register(
         nameof(Command), typeof(ICommand), typeof(SeekBar));
 
+    /// <summary>Also run <see cref="Command"/> while dragging (volume, brightness), not only on release (seek).</summary>
+    public static readonly DependencyProperty IsContinuousProperty = DependencyProperty.Register(
+        nameof(IsContinuous), typeof(bool), typeof(SeekBar));
+
     private const double TrackHeight = 4;
     private const double ThumbRadius = 9;
     private const double CenterRadius = 5;
@@ -113,6 +117,12 @@ public sealed class SeekBar : FrameworkElement
     {
         get => (ICommand?)GetValue(CommandProperty);
         set => SetValue(CommandProperty, value);
+    }
+
+    public bool IsContinuous
+    {
+        get => (bool)GetValue(IsContinuousProperty);
+        set => SetValue(IsContinuousProperty, value);
     }
 
     protected override void OnMouseLeftButtonDown(MouseButtonEventArgs e)
@@ -178,7 +188,30 @@ public sealed class SeekBar : FrameworkElement
         var length = ActualWidth - 2 * ThumbRadius;
         _dragValue = length > 0 ? Math.Clamp((point.X - ThumbRadius) / length, 0, 1) : 0;
         InvalidateVisual();
+        if (IsContinuous && Command?.CanExecute(_dragValue) == true)
+            Command.Execute(_dragValue);
     }
+}
+
+/// <summary>
+/// Attached state for Quick settings tiles: whether the feature is on (accent fill), and which corners are rounded, so a
+/// split tile's two buttons read as one.
+/// </summary>
+public static class Tile
+{
+    public static readonly DependencyProperty IsOnProperty = DependencyProperty.RegisterAttached(
+        "IsOn", typeof(bool), typeof(Tile), new FrameworkPropertyMetadata(false));
+
+    public static readonly DependencyProperty CornerRadiusProperty = DependencyProperty.RegisterAttached(
+        "CornerRadius", typeof(CornerRadius), typeof(Tile), new FrameworkPropertyMetadata(new CornerRadius(4)));
+
+    public static bool GetIsOn(DependencyObject element) => (bool)element.GetValue(IsOnProperty);
+
+    public static void SetIsOn(DependencyObject element, bool value) => element.SetValue(IsOnProperty, value);
+
+    public static CornerRadius GetCornerRadius(DependencyObject element) => (CornerRadius)element.GetValue(CornerRadiusProperty);
+
+    public static void SetCornerRadius(DependencyObject element, CornerRadius value) => element.SetValue(CornerRadiusProperty, value);
 }
 
 /// <summary>

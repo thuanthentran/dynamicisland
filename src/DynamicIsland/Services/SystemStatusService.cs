@@ -46,11 +46,14 @@ public sealed class SystemStatusService : IDisposable
     private AudioEndpointVolume? _endpoint;
     private volatile bool _disposed;
 
+    private readonly LatestValueWriter<float> _volumeWriter;
+
     public SystemStatusService()
     {
         _onNetworkChanged = _ => RefreshNetwork();
         _onPowerChanged = (_, _) => RefreshPower();
         _onVolumeChanged = data => Update(status => status with { Volume = data.MasterVolume, Muted = data.Muted });
+        _volumeWriter = new LatestValueWriter<float>(level => WithEndpoint(endpoint => endpoint.MasterVolumeLevelScalar = level), "Status");
     }
 
     public event Action<SystemStatus>? StatusChanged;
@@ -99,6 +102,31 @@ public sealed class SystemStatusService : IDisposable
             _deviceNotifications = null;
             _enumerator?.Dispose();
             _enumerator = null;
+        }
+    }
+
+    /// <summary>Master volume of the default render device (0–1). The endpoint's notification updates the status.</summary>
+    public void SetVolume(float level) => _volumeWriter.Post(Math.Clamp(level, 0f, 1f));
+
+    public void ToggleMute() => Task.Run(() => WithEndpoint(endpoint => endpoint.Mute = !endpoint.Mute));
+
+    // Core Audio stays on pool (MTA) threads, as in BindAudio. Called outside the lock: the change raises a volume
+    // notification whose handler takes it.
+    private void WithEndpoint(Action<AudioEndpointVolume> action)
+    {
+        AudioEndpointVolume? endpoint;
+        lock (_gate)
+            endpoint = _disposed ? null : _endpoint;
+        if (endpoint is null)
+            return;
+        try
+        {
+            action(endpoint);
+        }
+        catch (Exception ex)
+        {
+            // The device may have been rebound (and this endpoint released) in the meantime.
+            Debug.WriteLine($"[Status] volume change failed: {ex.Message}");
         }
     }
 

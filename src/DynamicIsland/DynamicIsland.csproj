@@ -40,6 +40,7 @@
     <PackageReference Include="F23.StringSimilarity" Version="7.0.1" />
     <PackageReference Include="Lyricify.Lyrics.Helper" Version="0.2.0" />
     <PackageReference Include="NAudio.Wasapi" Version="3.1.0" />
+    <PackageReference Include="System.Management" Version="10.0.0" />
   </ItemGroup>
 
 </Project>

@@ -13,6 +13,7 @@ namespace DynamicIsland.ViewModels;
 public enum IslandTab
 {
     Home,
+    QuickSettings,
     Settings
 }
 
@@ -135,6 +136,7 @@ public sealed partial class IslandViewModel : ObservableObject, IDisposable
         NotificationService notifications,
         SystemStatusService status,
         AudioSpectrumService spectrum,
+        QuickSettingsService quickSettings,
         LyricsService lyrics,
         SettingsService settings,
         Action exit)
@@ -149,6 +151,7 @@ public sealed partial class IslandViewModel : ObservableObject, IDisposable
         _settings = settings;
         _exit = exit;
         Settings = new SettingsViewModel(settings);
+        QuickSettings = new QuickSettingsViewModel(quickSettings, status, _ui, () => CollapseRequested?.Invoke());
 
         _media.SnapshotChanged += OnSnapshotChanged;
         _notifications.NotificationArrived += OnNotificationArrived;
@@ -165,7 +168,11 @@ public sealed partial class IslandViewModel : ObservableObject, IDisposable
     /// <summary>Raised on the UI thread after settings change; the host re-reads timing values.</summary>
     public event Action<IslandSettings>? SettingsChanged;
 
+    /// <summary>Raised on the UI thread when an action hands the screen to another window (a Settings page, a switch).</summary>
+    public event Action? CollapseRequested;
+
     public SettingsViewModel Settings { get; }
+    public QuickSettingsViewModel QuickSettings { get; }
     public IslandSettings CurrentSettings => _settings.Current;
     public ObservableCollection<NotificationItemViewModel> VisibleNotifications { get; } = [];
     public bool HasBannerIcon => BannerIcon is not null;
@@ -521,6 +528,8 @@ public sealed partial class IslandViewModel : ObservableObject, IDisposable
             : status.Volume < 0.34f ? ""
             : status.Volume < 0.67f ? ""
             : "";
+
+        QuickSettings.ApplyStatus(status, VolumeGlyph);
 
         HasBattery = status.HasBattery;
         var step = Math.Clamp((int)Math.Round(status.BatteryPercent / 10.0), 0, 10);
