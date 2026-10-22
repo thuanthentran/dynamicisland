@@ -169,14 +169,18 @@
             </Setter>
         </Style>
 
-        <!-- Quick-close handle: a grabber bar at the spot the cursor touched to open the island. -->
+        <!--
+          Quick-close handle: a grabber bar flush with the screen's top edge, where the cursor rested to open the island,
+          so closing is a click without moving the mouse. Square top corners: it touches the edge.
+        -->
         <Style x:Key="HandleButton" TargetType="Button">
             <Setter Property="Focusable" Value="False" />
             <Setter Property="Template">
                 <Setter.Value>
                     <ControlTemplate TargetType="Button">
-                        <Border x:Name="Chrome" Width="56" Height="20" CornerRadius="4" Background="Transparent">
-                            <Border x:Name="Bar" Width="32" Height="4" CornerRadius="2" Background="{DynamicResource Island.Tertiary}" />
+                        <Border x:Name="Chrome" Width="96" Height="18" CornerRadius="0,0,4,4" Background="Transparent">
+                            <Border x:Name="Bar" Width="32" Height="4" CornerRadius="2" Margin="0,6,0,0" VerticalAlignment="Top"
+                                    Background="{DynamicResource Island.Tertiary}" />
                         </Border>
                         <ControlTemplate.Triggers>
                             <Trigger Property="IsMouseOver" Value="True">
@@ -489,8 +493,8 @@
 
             <!-- Large: media and lyrics on the left, notifications on the right -->
             <StackPanel x:Name="LargePanel" Width="840" HorizontalAlignment="Center" VerticalAlignment="Top" Visibility="Collapsed">
-                <StackPanel Margin="20,8,20,20">
-                    <Grid Height="36">
+                <StackPanel Margin="20,0,20,20">
+                    <Grid Height="44">
                         <Button Style="{StaticResource SmallSubtleButton}" Content="&#xE713;" Command="{Binding OpenSettingsCommand}"
                                 HorizontalAlignment="Left" />
                         <Button x:Name="QuickCloseButton" Style="{StaticResource HandleButton}" HorizontalAlignment="Center"
@@ -639,7 +643,7 @@
 
             <!-- Settings, entered from the large island; cards like the Windows Settings app -->
             <StackPanel x:Name="SettingsPanel" Width="840" HorizontalAlignment="Center" VerticalAlignment="Top" Visibility="Collapsed">
-                <StackPanel Margin="20,8,20,20" DataContext="{Binding Settings}">
+                <StackPanel Margin="20,6,20,20" DataContext="{Binding Settings}">
                     <Grid Height="36" Margin="0,0,0,8">
                         <Button Style="{StaticResource SmallSubtleButton}" Content="&#xE72B;" HorizontalAlignment="Left"
                                 Command="{Binding DataContext.CloseSettingsCommand, RelativeSource={RelativeSource AncestorType=Window}}" />

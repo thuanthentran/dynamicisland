@@ -33,8 +33,8 @@ public partial class IslandWindow : Window
     private const double SlideDistance = 24;
     private const double HoverPaddingDip = 6;
     private const double FullWindowHeight = 640;
-    // Room below the shape for its shadow, plus the floating gap above it.
-    private const double WindowSlackDip = IslandSurface.FloatingOffset + 14;
+    // Room below the shape for its shadow.
+    private const double WindowSlackDip = 14;
     private static readonly TimeSpan TickInterval = TimeSpan.FromMilliseconds(50);
     private static readonly TimeSpan SpectrumInterval = TimeSpan.FromMilliseconds(33);
     private static readonly TimeSpan TopmostInterval = TimeSpan.FromSeconds(5);
@@ -61,7 +61,6 @@ public partial class IslandWindow : Window
     private double _mediumHeight = 72;
     private double _lastSmallWidth = 200;
     private Size _targetSize;
-    private double _targetTopOffset = -1;
     private DateTime _smallSince = DateTime.UtcNow;
     private DateTime _lastTrim = DateTime.MinValue;
     private DateTime _lastTopmost = DateTime.MinValue;
@@ -319,9 +318,7 @@ public partial class IslandWindow : Window
     {
         if (_currentPanel is null)
             return;
-        // Small tucks into the screen edge like the collapsed Snap bar; medium and large float like flyouts.
-        AnimateTopOffset(_modes.Mode is IslandMode.Small or IslandMode.Peek or IslandMode.Hidden ? 0 : IslandSurface.FloatingOffset, animate);
-
+        // Every size tucks into the screen edge like the collapsed Snap bar, so the pointer at the very top reaches it.
         var target = TargetSize(_currentPanel);
         if (Math.Abs(target.Width - _targetSize.Width) < 0.5 && Math.Abs(target.Height - _targetSize.Height) < 0.5)
             return;
@@ -345,21 +342,6 @@ public partial class IslandWindow : Window
         var height = new DoubleAnimation(target.Height, ResizeDuration) { EasingFunction = _spring };
         height.Completed += (_, _) => CompactWindow(target);
         Island.BeginAnimation(IslandSurface.ShapeHeightProperty, height, HandoffBehavior.SnapshotAndReplace);
-    }
-
-    private void AnimateTopOffset(double target, bool animate)
-    {
-        if (Math.Abs(target - _targetTopOffset) < 0.01)
-            return;
-        _targetTopOffset = target;
-        if (!animate)
-        {
-            Island.BeginAnimation(IslandSurface.TopOffsetProperty, null);
-            Island.TopOffset = target;
-            return;
-        }
-        Island.BeginAnimation(IslandSurface.TopOffsetProperty,
-            new DoubleAnimation(target, ResizeDuration) { EasingFunction = _spring }, HandoffBehavior.SnapshotAndReplace);
     }
 
     /// <summary>
