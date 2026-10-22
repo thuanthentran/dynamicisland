@@ -109,7 +109,7 @@
             <Setter Property="Height" Value="32" />
         </Style>
 
-        <!-- "^" at the end of the small island: tucks it away into a peeking sliver. -->
+        <!-- "^" at the end of the small island: hides it until the pointer is pushed against the top edge. -->
         <Style x:Key="StowButton" TargetType="Button" BasedOn="{StaticResource SubtleButton}">
             <Setter Property="Content" Value="&#xE70E;" />
             <Setter Property="FontSize" Value="10" />
@@ -394,11 +394,8 @@
                 </StackPanel>
             </Grid>
 
-            <!-- Peek: the stowed island, a sliver at the top edge; rest the pointer on it to open. -->
-            <Grid x:Name="PeekPanel" HorizontalAlignment="Center" VerticalAlignment="Top" Visibility="Collapsed">
-                <Border Width="28" Height="3" CornerRadius="1.5" HorizontalAlignment="Center" VerticalAlignment="Center"
-                        Background="{DynamicResource Island.Tertiary}" />
-            </Grid>
+            <!-- Stowed: nothing to show. Pushing the pointer against the top edge where the island was opens it. -->
+            <Grid x:Name="StowedPanel" HorizontalAlignment="Center" VerticalAlignment="Top" Visibility="Collapsed" />
 
             <!--
               Small, playing: media on the left (artwork, equalizer, the line being sung when lyrics were found), system

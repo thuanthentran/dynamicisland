@@ -22,8 +22,8 @@ namespace DynamicIsland.Views;
 public partial class IslandWindow : Window
 {
     private const double SmallHeight = 32;
-    // Stowed: about a third of the small island peeks out of the edge.
-    private const double PeekHeight = 11;
+    // Stowed, nothing is drawn; a strip this tall along the top edge, as wide as the small island was, brings it back.
+    private const double StowedHotZoneDip = 3;
     // Widths follow measured lyric lines (1036 lines, 13 tracks): the large card fits the longest line at 16px
     // semibold, the medium card the longest at 12px.
     private const double LargeWidth = 840;
@@ -78,7 +78,7 @@ public partial class IslandWindow : Window
         _spectrumTimer = new DispatcherTimer(DispatcherPriority.Render) { Interval = SpectrumInterval };
         _spectrumTimer.Tick += OnSpectrumTick;
 
-        _panels = [PeekPanel, SmallIdlePanel, SmallMediaPanel, BannerPanel, MediumPanel, LargePanel, SettingsPanel];
+        _panels = [StowedPanel, SmallIdlePanel, SmallMediaPanel, BannerPanel, MediumPanel, LargePanel, SettingsPanel];
         foreach (var panel in _panels)
         {
             panel.RenderTransform = new TranslateTransform();
@@ -202,7 +202,7 @@ public partial class IslandWindow : Window
             SetWindowPos(_hwnd, HWND_TOPMOST, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE);
         }
 
-        if (_modes.Mode is IslandMode.Small or IslandMode.Peek && !_trimmedThisRest && now - _smallSince >= TrimAfterIdle &&
+        if (_modes.Mode is IslandMode.Small or IslandMode.Stowed && !_trimmedThisRest && now - _smallSince >= TrimAfterIdle &&
             now - _lastTrim >= TrimMinimumInterval)
         {
             _trimmedThisRest = true;
@@ -211,14 +211,24 @@ public partial class IslandWindow : Window
         }
     }
 
-    /// <summary>The current (animated) shape plus a little padding, extended up to the screen edge across the gap.</summary>
+    /// <summary>
+    /// The current (animated) shape plus a little padding. Stowed, only a thin strip on the top edge where the small
+    /// island was: a pointer pushed against the edge, not one passing by underneath.
+    /// </summary>
     private bool IsOverIsland(POINT cursor)
     {
         if (_modes.Mode == IslandMode.Hidden || !GetWindowRect(_hwnd, out var window))
             return false;
         var scale = _screen.Scale;
-        var halfWidth = (Island.ShapeWidth / 2 + HoverPaddingDip) * scale;
         var centerX = window.Left + window.Width / 2.0;
+        if (_modes.Mode == IslandMode.Stowed)
+        {
+            var halfZone = _lastSmallWidth / 2 * scale;
+            return Math.Abs(cursor.X - centerX) <= halfZone && cursor.Y >= _screen.Bounds.Top &&
+                   cursor.Y < _screen.Bounds.Top + StowedHotZoneDip * scale;
+        }
+
+        var halfWidth = (Island.ShapeWidth / 2 + HoverPaddingDip) * scale;
         return cursor.X >= centerX - halfWidth && cursor.X <= centerX + halfWidth &&
                cursor.Y >= _screen.Bounds.Top &&
                cursor.Y <= window.Top + (Island.TopOffset + Island.ShapeHeight + HoverPaddingDip) * scale;
@@ -238,7 +248,9 @@ public partial class IslandWindow : Window
             _viewModel.IsSettingsOpen = false;
         if (mode is IslandMode.Large or IslandMode.Hidden)
             _bannerUntil = null; // the large island lists notifications itself
-        if (mode is IslandMode.Small or IslandMode.Peek)
+        if (mode is IslandMode.Stowed)
+            _bannerUntil = null; // stowed means quiet
+        if (mode is IslandMode.Small or IslandMode.Stowed)
         {
             _smallSince = DateTime.UtcNow;
             _trimmedThisRest = false;
@@ -253,7 +265,7 @@ public partial class IslandWindow : Window
     {
         IslandMode.Large => _viewModel.IsSettingsOpen ? SettingsPanel : LargePanel,
         IslandMode.Medium => _bannerUntil.HasValue ? BannerPanel : MediumPanel,
-        IslandMode.Peek => _bannerUntil.HasValue ? BannerPanel : PeekPanel,
+        IslandMode.Stowed => StowedPanel,
         _ => _bannerUntil.HasValue ? BannerPanel : _viewModel.HasMedia ? SmallMediaPanel : SmallIdlePanel
     };
 
@@ -277,9 +289,9 @@ public partial class IslandWindow : Window
         {
             panel.Height = SmallHeight;
         }
-        else if (panel == PeekPanel)
+        else if (panel == StowedPanel)
         {
-            (panel.Width, panel.Height) = (_lastSmallWidth, PeekHeight);
+            (panel.Width, panel.Height) = (_lastSmallWidth, 0);
         }
         else if (panel == BannerPanel)
         {
@@ -296,8 +308,8 @@ public partial class IslandWindow : Window
     {
         if (panel == BannerPanel)
             return BannerSize();
-        if (panel == PeekPanel)
-            return new Size(_lastSmallWidth, PeekHeight); // the small island, sunk into the edge
+        if (panel == StowedPanel)
+            return new Size(_lastSmallWidth, 0); // the small island, drawn up into the edge until nothing is left
 
         panel.Measure(new Size(double.PositiveInfinity, double.PositiveInfinity));
         var desired = panel.DesiredSize;
@@ -404,7 +416,7 @@ public partial class IslandWindow : Window
 
     private void OnBannerRequested(TimeSpan duration)
     {
-        if (_modes.Mode is IslandMode.Hidden or IslandMode.Large || ScreenProbe.IsNotificationQuiet(_screen))
+        if (_modes.Mode is IslandMode.Hidden or IslandMode.Stowed or IslandMode.Large || ScreenProbe.IsNotificationQuiet(_screen))
             return;
         _bannerUntil = DateTime.UtcNow + duration;
         Refresh(direction: 1, animate: true);
