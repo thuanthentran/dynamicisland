@@ -65,7 +65,7 @@ internal static class ScreenProbe
         return new ScreenInfo(monitor, info.rcMonitor, info.rcWork, scale);
     }
 
-    private static unsafe string GetClassNameOf(IntPtr hwnd)
+    internal static unsafe string GetClassNameOf(IntPtr hwnd)
     {
         const int capacity = 64;
         char* buffer = stackalloc char[capacity];

@@ -39,6 +39,7 @@ SOFTWARE.
 | F23.StringSimilarity | 7.0.1 | MIT | https://github.com/feature23/StringSimilarity.NET |
 | Lyricify.Lyrics.Helper | 0.2.0 | Apache-2.0 | https://github.com/WXRIW/Lyricify-Lyrics-Helper |
 | NAudio.Wasapi | 3.1.0 | MIT | https://github.com/naudio/NAudio |
+| System.Management | 10.0.0 | MIT | https://github.com/dotnet/runtime |
 
 ## Online services
 

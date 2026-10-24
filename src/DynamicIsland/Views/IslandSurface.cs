@@ -96,7 +96,7 @@ public sealed class IslandSurface : Decorator
         set => SetValue(ArtworkOpacityProperty, value);
     }
 
-    private double BottomRadius => Math.Min(CornerRadius, Math.Min(ShapeWidth, ShapeHeight) / 2);
+    private double BottomRadius => Math.Max(0, Math.Min(CornerRadius, Math.Min(ShapeWidth, ShapeHeight) / 2));
 
     /// <summary>Top corners round in proportion to how far the shape has left the edge.</summary>
     private double TopRadius => BottomRadius * Math.Clamp(TopOffset / FloatingOffset, 0, 1);
@@ -107,8 +107,11 @@ public sealed class IslandSurface : Decorator
     {
         // Content keeps its natural size; the shape, not the content, decides what is visible.
         Child?.Measure(new Size(double.PositiveInfinity, double.PositiveInfinity));
-        return new Size(ShapeWidth, ShapeHeight + TopOffset);
+        return Footprint;
     }
+
+    /// <summary>The spring overshoots slightly past a zero-height target (stowing), so the layout size is clamped.</summary>
+    private Size Footprint => new(Math.Max(0, ShapeWidth), Math.Max(0, ShapeHeight + TopOffset));
 
     protected override Size ArrangeOverride(Size arrangeSize)
     {
@@ -121,7 +124,7 @@ public sealed class IslandSurface : Decorator
             var clip = BuildOutline(-offset, 0, ShapeWidth, ShapeHeight, TopRadius, BottomRadius, closed: true);
             child.Clip = clip;
         }
-        return new Size(ShapeWidth, ShapeHeight + TopOffset);
+        return Footprint;
     }
 
     protected override void OnRender(DrawingContext context)

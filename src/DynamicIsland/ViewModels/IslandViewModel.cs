@@ -9,6 +9,15 @@ using DynamicIsland.Services.Lyrics;
 
 namespace DynamicIsland.ViewModels;
 
+/// <summary>Tabs of the large island, in the order the tab bar shows them and the scroll wheel steps through.</summary>
+public enum IslandTab
+{
+    Home,
+    QuickSettings,
+    Windows,
+    Settings
+}
+
 /// <summary>
 /// Bindable island state. Service events are marshalled onto the UI thread through the SynchronizationContext captured at
 /// construction; the host owns size, mode and motion and calls <see cref="Tick"/> from its timer.
@@ -21,6 +30,7 @@ public sealed partial class IslandViewModel : ObservableObject, IDisposable
     private const int VisibleNotificationLimit = 3;
     private static readonly TimeSpan ProgressInterval = TimeSpan.FromMilliseconds(250);
     private static readonly TimeSpan LyricLead = TimeSpan.FromMilliseconds(250);
+    private static readonly TimeSpan LockToastDuration = TimeSpan.FromMilliseconds(1600);
 
     private readonly MediaService _media;
     private readonly NotificationService _notifications;
@@ -44,6 +54,9 @@ public sealed partial class IslandViewModel : ObservableObject, IDisposable
     private byte[]? _appIconBytes;
     private Color? _artworkColor;
     private bool _spectrumVisible;
+    private bool? _capsLock;
+    private bool? _numLock;
+    private DateTimeOffset? _lockToastUntil;
     private bool _disposed;
 
     [ObservableProperty] private string _title = NoMediaTitle;
@@ -90,6 +103,18 @@ public sealed partial class IslandViewModel : ObservableObject, IDisposable
     [ObservableProperty] private string _batteryGlyph = "";
     [ObservableProperty] private string _batteryText = string.Empty;
 
+    // Lock keys: a toast on each toggle; once it is gone, a keycap letter beside the clock while the key stays on.
+    [ObservableProperty] private bool _isLockToastVisible;
+    [ObservableProperty] private string _lockToastText = string.Empty;
+
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(HasLockBadge))]
+    private bool _capsBadge;
+
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(HasLockBadge))]
+    private bool _numBadge;
+
     [ObservableProperty] private bool _hasNotifications;
     [ObservableProperty] private string _moreNotificationsText = string.Empty;
     [ObservableProperty] private bool _hasMoreNotifications;
@@ -100,7 +125,8 @@ public sealed partial class IslandViewModel : ObservableObject, IDisposable
     [ObservableProperty] private string _bannerBody = string.Empty;
     [ObservableProperty] private ImageSource? _bannerIcon;
 
-    [ObservableProperty] private bool _isSettingsOpen;
+    /// <summary>The large island's tab; the host returns it to <see cref="IslandTab.Home"/> whenever the island leaves large.</summary>
+    [ObservableProperty] private IslandTab _selectedTab;
     [ObservableProperty] private IslandPalette _palette = IslandPalette.Dark(Colors.DodgerBlue);
 
     /// <summary>Equalizer colour: the artwork's dominant colour tuned for the theme, or the system accent without artwork.</summary>
@@ -111,6 +137,7 @@ public sealed partial class IslandViewModel : ObservableObject, IDisposable
         NotificationService notifications,
         SystemStatusService status,
         AudioSpectrumService spectrum,
+        QuickSettingsService quickSettings,
         LyricsService lyrics,
         SettingsService settings,
         Action exit)
@@ -125,6 +152,8 @@ public sealed partial class IslandViewModel : ObservableObject, IDisposable
         _settings = settings;
         _exit = exit;
         Settings = new SettingsViewModel(settings);
+        QuickSettings = new QuickSettingsViewModel(quickSettings, status, _ui, () => CollapseRequested?.Invoke());
+        Windows = new WindowsViewModel(() => CollapseRequested?.Invoke());
 
         _media.SnapshotChanged += OnSnapshotChanged;
         _notifications.NotificationArrived += OnNotificationArrived;
@@ -141,11 +170,17 @@ public sealed partial class IslandViewModel : ObservableObject, IDisposable
     /// <summary>Raised on the UI thread after settings change; the host re-reads timing values.</summary>
     public event Action<IslandSettings>? SettingsChanged;
 
+    /// <summary>Raised on the UI thread when an action hands the screen to another window (a Settings page, a switch).</summary>
+    public event Action? CollapseRequested;
+
     public SettingsViewModel Settings { get; }
+    public QuickSettingsViewModel QuickSettings { get; }
+    public WindowsViewModel Windows { get; }
     public IslandSettings CurrentSettings => _settings.Current;
     public ObservableCollection<NotificationItemViewModel> VisibleNotifications { get; } = [];
     public bool HasBannerIcon => BannerIcon is not null;
     public bool HasSourceAppIcon => SourceAppIcon is not null;
+    public bool HasLockBadge => CapsBadge || NumBadge;
 
     // Segoe Fluent Icons, the solid set Quick Settings uses: PauseSolid / PlaySolid.
     public string PlayPauseGlyph => IsPlaying ? "" : "";
@@ -167,9 +202,10 @@ public sealed partial class IslandViewModel : ObservableObject, IDisposable
         };
     }
 
-    /// <summary>Advances the clock, playback position and lyric line. Called by the host timer on the UI thread.</summary>
+    /// <summary>Advances the clock, lock keys, playback position and lyric line. Called by the host timer on the UI thread.</summary>
     public void Tick(DateTimeOffset now)
     {
+        UpdateLockKeys(now);
         if (now.Minute != _lastClockMinute)
         {
             _lastClockMinute = now.Minute;
@@ -240,12 +276,6 @@ public sealed partial class IslandViewModel : ObservableObject, IDisposable
 
     [RelayCommand]
     private Task ClearNotificationsAsync() => _notifications.ClearAsync();
-
-    [RelayCommand]
-    private void OpenSettings() => IsSettingsOpen = true;
-
-    [RelayCommand]
-    private void CloseSettings() => IsSettingsOpen = false;
 
     [RelayCommand]
     private void Exit() => _exit();
@@ -413,6 +443,29 @@ public sealed partial class IslandViewModel : ObservableObject, IDisposable
         NextLyric = index + 1 < lines.Count ? lines[index + 1].Text : string.Empty;
     }
 
+    /// <summary>
+    /// A toggle (not the state read at startup) shows a toast naming the key that changed; the badges follow the keys only
+    /// once the toast has gone, so the cluster comes back already showing the new state.
+    /// </summary>
+    private void UpdateLockKeys(DateTimeOffset now)
+    {
+        bool caps = LockKeys.CapsLock, num = LockKeys.NumLock;
+        if (_capsLock is { } wasCaps && _numLock is { } wasNum && (caps != wasCaps || num != wasNum))
+        {
+            LockToastText = caps != wasCaps ? $"Caps Lock {(caps ? "on" : "off")}" : $"Num Lock {(num ? "on" : "off")}";
+            IsLockToastVisible = true;
+            _lockToastUntil = now + LockToastDuration;
+        }
+        (_capsLock, _numLock) = (caps, num);
+
+        if (_lockToastUntil is { } until && now < until)
+            return;
+        _lockToastUntil = null;
+        IsLockToastVisible = false;
+        CapsBadge = caps;
+        NumBadge = num;
+    }
+
     private void PresentBanner(IslandNotification notification)
     {
         BannerApp = string.IsNullOrWhiteSpace(notification.AppName) ? FallbackAppName : notification.AppName;
@@ -478,6 +531,8 @@ public sealed partial class IslandViewModel : ObservableObject, IDisposable
             : status.Volume < 0.34f ? ""
             : status.Volume < 0.67f ? ""
             : "";
+
+        QuickSettings.ApplyStatus(status, VolumeGlyph);
 
         HasBattery = status.HasBattery;
         var step = Math.Clamp((int)Math.Round(status.BatteryPercent / 10.0), 0, 10);

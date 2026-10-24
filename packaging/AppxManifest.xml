@@ -32,6 +32,8 @@
     <uap3:Capability Name="userNotificationListener" />
     <rescap:Capability Name="runFullTrust" />
     <rescap:Capability Name="unvirtualizedResources" />
+    <!-- Wi-Fi and Bluetooth tiles: Windows.Devices.Radios needs it to change radio state when the app has identity. -->
+    <DeviceCapability Name="radios" />
   </Capabilities>
 
   <Applications>

@@ -3,8 +3,8 @@ namespace DynamicIsland.Views;
 public enum IslandMode
 {
     Hidden,
-    /// <summary>Stowed by the user: only a sliver peeks out of the top edge.</summary>
-    Peek,
+    /// <summary>Stowed by the user: nothing is drawn; resting the pointer on the top edge where it was brings it back.</summary>
+    Stowed,
     Small,
     Medium,
     Large
@@ -28,9 +28,10 @@ public readonly record struct ModeInput(
 /// over it (window drag, Snap) or a quick close blocks reopening until the cursor leaves.</item>
 /// <item>Large → Medium (media playing) or Small after the cursor has been away for <see cref="LeaveDelay"/>.</item>
 /// <item>Medium → Large on a short hover; → Small after <see cref="MediumTimeout"/> away.</item>
-/// <item>Any → Hidden while a fullscreen app runs, debounced both ways; it comes back as it was (peek or small).</item>
-/// <item>Small → Peek only through <see cref="Stow"/>. Peek opens like Small, and once expanded the island returns to
-/// Small, not Peek: stowing is a one-off choice the user repeats with the button.</item>
+/// <item>Any → Hidden while a fullscreen app runs, debounced both ways; it comes back as it was (stowed or small).</item>
+/// <item>Small → Stowed only through <see cref="Stow"/>. Stowed opens like Small (the host reports its top-edge hot zone as
+/// <see cref="ModeInput.OverIsland"/>), and once expanded the island returns to Small, not Stowed: stowing is a one-off
+/// choice the user repeats with the button.</item>
 /// </list>
 /// </summary>
 public sealed class IslandModeController
@@ -66,7 +67,7 @@ public sealed class IslandModeController
 
         switch (Mode)
         {
-            case IslandMode.Small or IslandMode.Peek:
+            case IslandMode.Small or IslandMode.Stowed:
                 if (!input.OverIsland)
                     return null;
                 if (input.OverControl)
@@ -111,15 +112,15 @@ public sealed class IslandModeController
     }
 
     /// <summary>A click on the small or medium island opens it at once.</summary>
-    public IslandMode? Open() => Mode is IslandMode.Small or IslandMode.Peek or IslandMode.Medium ? Set(IslandMode.Large) : null;
+    public IslandMode? Open() => Mode is IslandMode.Small or IslandMode.Medium ? Set(IslandMode.Large) : null;
 
-    /// <summary>The "^" button: tuck the small island away until the user opens it again.</summary>
+    /// <summary>The "^" button: hide the small island until the user opens it again from the top edge.</summary>
     public IslandMode? Stow()
     {
         if (Mode != IslandMode.Small)
             return null;
         _stowed = true;
-        var mode = Set(IslandMode.Peek);
+        var mode = Set(IslandMode.Stowed);
         // The pointer is still at the top edge; do not reopen until it has left.
         _blockedUntilLeave = true;
         return mode;
@@ -150,7 +151,7 @@ public sealed class IslandModeController
         if (Mode != IslandMode.Hidden)
             return null;
         _windowedSince ??= input.Now;
-        return input.Now - _windowedSince >= FullscreenDebounce ? Set(_stowed ? IslandMode.Peek : IslandMode.Small) : null;
+        return input.Now - _windowedSince >= FullscreenDebounce ? Set(_stowed ? IslandMode.Stowed : IslandMode.Small) : null;
     }
 
     private IslandMode Set(IslandMode mode)

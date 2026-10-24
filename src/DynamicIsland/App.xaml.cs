@@ -21,6 +21,7 @@ public partial class App : Application
     private NotificationService? _notifications;
     private SystemStatusService? _status;
     private AudioSpectrumService? _spectrum;
+    private QuickSettingsService? _quickSettings;
     private IslandViewModel? _viewModel;
     private IslandWindow? _island;
 
@@ -40,7 +41,8 @@ public partial class App : Application
         _notifications = new NotificationService();
         _status = new SystemStatusService();
         _spectrum = new AudioSpectrumService();
-        _viewModel = new IslandViewModel(_media, _notifications, _status, _spectrum, new LyricsService(), _settings, Shutdown);
+        _quickSettings = new QuickSettingsService();
+        _viewModel = new IslandViewModel(_media, _notifications, _status, _spectrum, _quickSettings, new LyricsService(), _settings, Shutdown);
         _island = new IslandWindow(_viewModel);
         _island.Start();
 
@@ -58,6 +60,7 @@ public partial class App : Application
     {
         _island?.Stop();
         _viewModel?.Dispose();
+        _quickSettings?.Dispose();
         _spectrum?.Dispose();
         _status?.Dispose();
         _notifications?.Dispose();
